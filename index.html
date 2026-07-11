@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Suivi Salaire, RTT & Congés</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  body { margin: 0; background: #F7F8F4; }
+  .font-display { font-family: 'Fraunces', Georgia, serif; }
+  .font-mono { font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useMemo } = React;
+
+const COLORS = {
+  paper: "#F7F8F4", stripe: "#E6ECE1", ink: "#1F2B27",
+  accent: "#35506B", gain: "#4B7A5E", loss: "#9C4A3C", gold: "#96793C", warnBg: "#F3E3DE",
+};
+
+const MOIS_FR = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
+
+const HISTORIQUE = [
+  { periode: "Juillet 2025", paiement: "2025-07-31", salaireRef: 2261.76, brut: 2459.21, netSocial: 1879.17, netPaye: 1779.56, cpAcquis: 27, cpPris: 9, cpSolde: 18 },
+  { periode: "Août 2025", paiement: "2025-08-31", salaireRef: 2261.76, brut: 2449.79, netSocial: 1871.75, netPaye: 1772.29, cpAcquis: 27, cpPris: 13, cpSolde: 14 },
+  { periode: "Novembre 2025", paiement: "2025-11-30", salaireRef: 2261.76, brut: 4709.34, netSocial: 3652.55, netPaye: 3522.18, cpAcquis: 27, cpPris: 24, cpSolde: 3, note: "Prime 13e mois / Noël : 2 259,55 €" },
+  { periode: "Mai 2026", paiement: "2026-05-31", salaireRef: 2284.48, brut: 3626.29, netSocial: 2796.88, netPaye: 2677.83, cpAcquis: 25, cpPris: 10, cpSolde: 15, note: "Demi-prime 13e mois / vacances : 1 140,35 €" },
+];
+
+const DEFAULT_STATE = {
+  config: {
+    rttBaseAnnuel: 26, cpBaseAnnuel: 27, cpCycleDebut: "06-01", maxRttConsecutifs: 5,
+    primeVacancesPct: 50, moisPrimeVacances: 5, primeNoelPct: 100, moisPrimeNoel: 11,
+    ticketNombreMois: 17, ticketValeur: 12, ticketPartSalarialePct: 40,
+  },
+  personnes: [
+    { id: "nicolas", nom: "Nicolas", dateEntree: "2019-07-01", entreesMensuelles: {
+      "2025-07": { salaire: 2261.76, netFiscal: 2109.67, ps: 40.08 },
+      "2025-08": { salaire: 2261.76, netFiscal: 2101.80, ps: 39.93 },
+      "2025-11": { salaire: 2261.76, netFiscal: 3976.30, ps: 75.55 },
+      "2026-05": { salaire: 2284.48, netFiscal: 3087.42, ps: 67.92 },
+    }},
+    { id: "sarah", nom: "Sarah", dateEntree: "", entreesMensuelles: {} },
+    { id: "simon", nom: "Simon", dateEntree: "", entreesMensuelles: {} },
+    { id: "nelly", nom: "Nelly", dateEntree: "", entreesMensuelles: {} },
+  ],
+  joursPris: [],
+  periodesBloquees: [],
+};
+
+function uid() { return Math.random().toString(36).slice(2, 10); }
+function round2(n) { return Math.round(Number(n) * 100) / 100; }
+function parseISO(s) { return new Date(s + "T00:00:00"); }
+function toLocalISODate(d) { return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0"); }
+function formatEUR(n) { return (Number(n) || 0).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €"; }
+function formatJours(n) { return round2(n || 0).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function formatDateFR(s) { if (!s) return "-"; return parseISO(s).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" }); }
+function formatMoisAnnee(key) { const parts = key.split("-"); return MOIS_FR[Number(parts[1])-1] + " " + parts[0]; }
+function moisEcoules(debut, fin) {
+  let m = (fin.getFullYear()-debut.getFullYear())*12 + (fin.getMonth()-debut.getMonth());
+  if (fin.getDate() < debut.getDate()) m -= 1;
+  return Math.max(0, m);
+}
+function anneesEcoulees(debut, fin) {
+  let a = fin.getFullYear() - debut.getFullYear();
+  const md = d => d.getMonth()*100 + d.getDate();
+  if (md(fin) < md(debut)) a -= 1;
+  return Math.max(0, a);
+}
+function debutCycle(monthDay, dateRef) {
+  const parts = monthDay.split("-").map(Number);
+  let start = new Date(dateRef.getFullYear(), parts[0]-1, parts[1]);
+  if (start > dateRef) start = new Date(dateRef.getFullYear()-1, parts[0]-1, parts[1]);
+  return start;
+}
+function accrualDepuis(base, dateDebut, dateRef) {
+  const mois = Math.min(12, moisEcoules(dateDebut, dateRef));
+  return round2((Number(base)/12) * mois);
+}
+function bonusAncienneteJours(annees) {
+  if (annees >= 30) return 15;
+  if (annees >= 20) return 10;
+  if (annees >= 10) return 5;
+  return 0;
+}
+function prochainPalier(dateEntreeStr, dateRef) {
+  if (!dateEntreeStr) return null;
+  const dateEntree = parseISO(dateEntreeStr);
+  const annees = anneesEcoulees(dateEntree, dateRef);
+  const next = [10, 20, 30].filter(p => p > annees)[0];
+  if (!next) return null;
+  return { annees: next, date: new Date(dateEntree.getFullYear()+next, dateEntree.getMonth(), dateEntree.getDate()) };
+}
+function dansPeriodeBloquee(date, periodes) {
+  const found = periodes.filter(p => p.dateDebut && p.dateFin && date >= p.dateDebut && date <= p.dateFin);
+  return found.length ? found[0] : null;
+}
+function joursAdjacents(d1, d2) { return (parseISO(d2)-parseISO(d1))/86400000 === 1; }
+function depasseRTTConsecutifs(nouvelleDate, joursExistants, max) {
+  const set = {};
+  joursExistants.filter(j => j.type === "RTT").forEach(j => { set[j.date] = true; });
+  set[nouvelleDate] = true;
+  const dates = Object.keys(set).sort();
+  const idx = dates.indexOf(nouvelleDate);
+  let run = 1;
+  for (let i = idx-1; i >= 0 && joursAdjacents(dates[i], dates[i+1]); i--) run++;
+  for (let i = idx+1; i < dates.length && joursAdjacents(dates[i-1], dates[i]); i++) run++;
+  return run > max;
+}
+function exporterICS(joursPris) {
+  const pad = n => String(n).padStart(2,"0");
+  const toICSDate = s => s.replace(/-/g,"");
+  const nextDay = s => { const d = parseISO(s); d.setDate(d.getDate()+1); return toICSDate(toLocalISODate(d)); };
+  const now = new Date();
+  const dtstamp = now.getFullYear()+pad(now.getMonth()+1)+pad(now.getDate())+"T"+pad(now.getHours())+pad(now.getMinutes())+pad(now.getSeconds())+"Z";
+  let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//SuiviSalaireRTT//FR\r\nCALSCALE:GREGORIAN\r\n";
+  joursPris.forEach(j => {
+    ics += "BEGIN:VEVENT\r\n";
+    ics += "UID:" + j.id + "@suivi-salaire-rtt\r\n";
+    ics += "DTSTAMP:" + dtstamp + "\r\n";
+    ics += "DTSTART;VALUE=DATE:" + toICSDate(j.date) + "\r\n";
+    ics += "DTEND;VALUE=DATE:" + nextDay(j.date) + "\r\n";
+    ics += "SUMMARY:" + j.type + (Number(j.duree)===0.5 ? " (demi-journée)" : "") + (j.note ? " - " + j.note : "") + "\r\n";
+    ics += "END:VEVENT\r\n";
+  });
+  ics += "END:VCALENDAR\r\n";
+  const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "rtt-cp.ics";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+const JSONBIN_BASE = "https://api.jsonbin.io/v3/b";
+async function jsonBinRead(cfg) {
+  const res = await fetch(JSONBIN_BASE + "/" + cfg.binId + "/latest", { headers: { "X-Master-Key": cfg.apiKey } });
+  if (!res.ok) throw new Error("read failed");
+  const data = await res.json();
+  return data.record;
+}
+async function jsonBinWrite(cfg, record) {
+  const res = await fetch(JSONBIN_BASE + "/" + cfg.binId, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", "X-Master-Key": cfg.apiKey },
+    body: JSON.stringify(record),
+  });
+  if (!res.ok) throw new Error("write failed");
+  return res.json();
+}
+async function jsonBinCreate(apiKey, record) {
+  const res = await fetch(JSONBIN_BASE, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Master-Key": apiKey, "X-Bin-Name": "suivi-salaire" },
+    body: JSON.stringify(record),
+  });
+  if (!res.ok) throw new Error("create failed");
+  const data = await res.json();
+  return data.metadata.id;
+}
+
+function useBinConfig() {
+  const [cfg, setCfgState] = useState(function() {
+    try {
+      const raw = localStorage.getItem("suivi_salaire_jsonbin_config");
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  });
+  function setCfg(next) {
+    setCfgState(next);
+    try {
+      if (next) localStorage.setItem("suivi_salaire_jsonbin_config", JSON.stringify(next));
+      else localStorage.removeItem("suivi_salaire_jsonbin_config");
+    } catch (e) {}
+  }
+  return [cfg, setCfg];
+}
+
+function TrashIcon({ size = 16, color = "currentColor" }) {
+  return (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="3 6 5 6 21 6"></polyline>
+    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+    <path d="M10 11v6"></path><path d="M14 11v6"></path>
+  </svg>);
+}
+function DownloadIcon({ size = 16, color = "currentColor" }) {
+  return (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+    <polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line>
+  </svg>);
+}
+function AlertIcon({ size = 13, color = "currentColor" }) {
+  return (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+    <line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line>
+  </svg>);
+}
+
+function Card({ children, className = "", dark = false, style = {} }) {
+  const base = dark ? { backgroundColor: COLORS.ink, color: "#fff" } : { backgroundColor: "#fff", color: COLORS.ink };
+  return (<div className={"rounded-2xl border p-4 " + (dark ? "border-transparent" : "border-stone-200") + " " + className} style={{ ...base, ...style }}>{children}</div>);
+}
+function NumberField({ label, value, onChange, step = "0.01", suffix }) {
+  return (<label className="block">
+    <span className="text-xs text-stone-500">{label}</span>
+    <div className="flex items-center gap-2 mt-1">
+      <input type="number" step={step} value={value}
+        onChange={e => onChange(e.target.value === "" ? "" : Number(e.target.value))}
+        className="font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-400" />
+      {suffix && <span className="text-xs text-stone-400">{suffix}</span>}
+    </div>
+  </label>);
+}
+function Row({ children, index = 0 }) {
+  return (<div className="flex items-center justify-between rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: index % 2 === 1 ? COLORS.stripe : "transparent" }}>{children}</div>);
+}
+function Warning({ children }) {
+  return (<p className="col-span-2 text-xs rounded-lg px-3 py-2 flex items-center gap-1.5" style={{ backgroundColor: COLORS.warnBg, color: COLORS.loss }}>
+    <AlertIcon color={COLORS.loss} /> {children}
+  </p>);
+}
+
+function SetupScreen({ onSave }) {
+  const [apiKey, setApiKey] = useState("");
+  const [binId, setBinId] = useState("");
+  const [mode, setMode] = useState("create");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!apiKey.trim()) { setError("La clé API JSONBin est requise."); return; }
+    setBusy(true); setError("");
+    try {
+      if (mode === "create") {
+        const id = await jsonBinCreate(apiKey.trim(), DEFAULT_STATE);
+        onSave({ apiKey: apiKey.trim(), binId: id });
+      } else {
+        if (!binId.trim()) { setError("Le Bin ID est requis."); setBusy(false); return; }
+        await jsonBinRead({ apiKey: apiKey.trim(), binId: binId.trim() });
+        onSave({ apiKey: apiKey.trim(), binId: binId.trim() });
+      }
+    } catch (err) {
+      setError("Connexion à JSONBin impossible. Vérifie ta clé API" + (mode === "existing" ? " et le Bin ID." : "."));
+    }
+    setBusy(false);
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center px-5" style={{ backgroundColor: COLORS.paper }}>
+      <div className="w-full max-w-sm rounded-2xl p-5" style={{ backgroundColor: "#fff", border: "1px solid #E7E5E4" }}>
+        <p className="font-display text-xl mb-1" style={{ color: COLORS.ink }}>Connexion JSONBin</p>
+        <p className="text-sm text-stone-500 mb-4">Tes données sont stockées sur ton propre bin JSONBin.io, pas sur GitHub.</p>
+        <div className="flex gap-2 mb-4">
+          <button type="button" onClick={() => setMode("create")} className="flex-1 py-2 rounded-lg text-sm"
+            style={{ backgroundColor: mode === "create" ? COLORS.ink : COLORS.stripe, color: mode === "create" ? "#fff" : COLORS.ink }}>Créer un bin</button>
+          <button type="button" onClick={() => setMode("existing")} className="flex-1 py-2 rounded-lg text-sm"
+            style={{ backgroundColor: mode === "existing" ? COLORS.ink : COLORS.stripe, color: mode === "existing" ? "#fff" : COLORS.ink }}>J'ai déjà un bin</button>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <label className="block">
+            <span className="text-xs text-stone-500">Clé API JSONBin (X-Master-Key)</span>
+            <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)}
+              className="font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" />
+          </label>
+          {mode === "existing" && (
+            <label className="block">
+              <span className="text-xs text-stone-500">Bin ID</span>
+              <input type="text" value={binId} onChange={e => setBinId(e.target.value)}
+                className="font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" />
+            </label>
+          )}
+          {error && <p className="text-xs" style={{ color: COLORS.loss }}>{error}</p>}
+          <button type="submit" disabled={busy} className="w-full text-white rounded-lg py-2 text-sm font-medium disabled:opacity-50" style={{ backgroundColor: COLORS.ink }}>
+            {busy ? "Connexion…" : (mode === "create" ? "Créer et continuer" : "Continuer")}
+          </button>
+        </form>
+        <p className="text-xs text-stone-400 mt-4">Pas de compte ? Crée-en un gratuitement sur jsonbin.io, puis copie ta X-Master-Key depuis ton tableau de bord.</p>
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [binConfig, setBinConfig] = useBinConfig();
+  const [state, setState] = useState(DEFAULT_STATE);
+  const [loading, setLoading] = useState(true);
+  const [syncError, setSyncError] = useState("");
+  const [tab, setTab] = useState("dashboard");
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(function() {
+    if (!binConfig) { setLoading(false); return; }
+    setLoading(true);
+    (async function() {
+      try {
+        const record = await jsonBinRead(binConfig);
+        setState({ ...DEFAULT_STATE, ...record, config: { ...DEFAULT_STATE.config, ...(record.config || {}) } });
+        setSyncError("");
+      } catch (e) {
+        setSyncError("Impossible de charger tes données depuis JSONBin.");
+      }
+      setLoading(false);
+    })();
+  }, [binConfig]);
+
+  async function persist(nextState) {
+    setState(nextState);
+    if (!binConfig) return;
+    setSaving(true);
+    try {
+      await jsonBinWrite(binConfig, nextState);
+      setSyncError("");
+    } catch (e) {
+      setSyncError("Échec de la sauvegarde vers JSONBin. Réessaie dans un instant.");
+    }
+    setSaving(false);
+  }
+
+  function updateConfig(patch) { persist({ ...state, config: { ...state.config, ...patch } }); }
+  function updatePersonnes(next) { persist({ ...state, personnes: next }); }
+  function ajouterJour(j) {
+    const next = [...state.joursPris, { id: uid(), ...j }].sort((a,b) => a.date.localeCompare(b.date));
+    persist({ ...state, joursPris: next });
+  }
+  function supprimerJour(id) { persist({ ...state, joursPris: state.joursPris.filter(j => j.id !== id) }); }
+  function ajouterPeriode(per) {
+    const next = [...state.periodesBloquees, { id: uid(), ...per }].sort((a,b) => a.dateDebut.localeCompare(b.dateDebut));
+    persist({ ...state, periodesBloquees: next });
+  }
+  function supprimerPeriode(id) { persist({ ...state, periodesBloquees: state.periodesBloquees.filter(p => p.id !== id) }); }
+  function ajouterPersonne() { updatePersonnes([...state.personnes, { id: uid(), nom: "", dateEntree: "", entreesMensuelles: {} }]); }
+  function supprimerPersonne(id) { if (id === "nicolas") return; updatePersonnes(state.personnes.filter(p => p.id !== id)); }
+  function updatePersonneChamp(id, patch) { updatePersonnes(state.personnes.map(p => p.id === id ? { ...p, ...patch } : p)); }
+
+  async function reinitialiser() {
+    if (!confirmReset) { setConfirmReset(true); setTimeout(() => setConfirmReset(false), 3000); return; }
+    setConfirmReset(false);
+    await persist(DEFAULT_STATE);
+  }
+
+  const today = useMemo(() => new Date(), []);
+  const nicolas = state.personnes.filter(p => p.id === "nicolas")[0] || state.personnes[0];
+  const anneesNicolas = (nicolas && nicolas.dateEntree) ? anneesEcoulees(parseISO(nicolas.dateEntree), today) : 0;
+  const bonusCP = bonusAncienneteJours(anneesNicolas);
+
+  const debutRTT = new Date(today.getFullYear(), 0, 1);
+  const rttAcquis = accrualDepuis(state.config.rttBaseAnnuel, debutRTT, today);
+  const rttPris = state.joursPris.filter(j => j.type === "RTT" && j.date >= toLocalISODate(debutRTT)).reduce((s,j) => s + Number(j.duree), 0);
+  const soldeRTT = round2(rttAcquis - rttPris);
+
+  const debutCycleCP = debutCycle(state.config.cpCycleDebut, today);
+  const cpAcquisFixe = round2(Number(state.config.cpBaseAnnuel) + bonusCP);
+  const cpPris = state.joursPris.filter(j => j.type === "CP" && j.date >= toLocalISODate(debutCycleCP)).reduce((s,j) => s + Number(j.duree), 0);
+  const soldeCP = round2(cpAcquisFixe - cpPris);
+  const cpEnCours = accrualDepuis(state.config.cpBaseAnnuel, new Date(today.getFullYear(), 0, 1), today);
+  const conges = { soldeRTT, soldeCP, rttAcquis, rttPris, cpAcquisFixe, cpPris, cpEnCours, debutCycleCP };
+
+  function primeMontant(pct, mois, annee) {
+    const key = annee + "-" + String(mois).padStart(2, "0");
+    const entree = (nicolas && nicolas.entreesMensuelles) ? nicolas.entreesMensuelles[key] : null;
+    const s = entree ? entree.salaire : null;
+    if (!s) return null;
+    return round2(Number(s) * pct / 100);
+  }
+
+  const anneeActuelle = today.getFullYear();
+  const prochaines = useMemo(function() {
+    const items = [];
+    [anneeActuelle, anneeActuelle+1].forEach(function(an) {
+      items.push({ date: new Date(an, state.config.moisPrimeVacances-1, 1), label: "Prime de vacances", montant: primeMontant(state.config.primeVacancesPct, state.config.moisPrimeVacances, an) });
+      items.push({ date: new Date(an, state.config.moisPrimeNoel-1, 1), label: "Prime de Noël", montant: primeMontant(state.config.primeNoelPct, state.config.moisPrimeNoel, an) });
+    });
+    const debutMois = new Date(today.getFullYear(), today.getMonth(), 1);
+    return items.filter(i => i.date >= debutMois).sort((a,b) => a.date - b.date).slice(0,3);
+  }, [state.config, state.personnes, anneeActuelle]);
+
+  const dernierSalaire = useMemo(function() {
+    const src = (nicolas && nicolas.entreesMensuelles) ? nicolas.entreesMensuelles : {};
+    const entries = Object.keys(src).filter(function(k) { return src[k] && src[k].salaire; }).sort();
+    if (!entries.length) return null;
+    const key = entries[entries.length-1];
+    return [key, src[key]];
+  }, [nicolas]);
+
+  if (!binConfig) return <SetupScreen onSave={setBinConfig} />;
+  if (loading) {
+    return (<div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: COLORS.paper }}>
+      <p className="text-sm" style={{ color: COLORS.accent }}>Chargement…</p>
+    </div>);
+  }
+
+  const tabs = [
+    { id: "dashboard", label: "Accueil" },
+    { id: "salaires", label: "Salaires" },
+    { id: "primes", label: "Primes" },
+    { id: "conges", label: "RTT & CP" },
+  ];
+
+  return (
+    <div className="min-h-screen pb-24" style={{ backgroundColor: COLORS.paper, color: COLORS.ink }}>
+      <header className="px-5 pt-6 pb-5" style={{ backgroundColor: COLORS.ink, color: "#fff" }}>
+        <div className="flex items-start justify-between">
+          <div className="flex items-start gap-3">
+            <div className="rounded-xl p-2 shrink-0 flex items-center justify-center" style={{ backgroundColor: "#2A3A34", width: 36, height: 36 }}>
+              <span style={{ color: COLORS.gain, fontSize: 18, fontWeight: 600 }}>€</span>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-widest" style={{ color: "#8FA69B" }}>Suivi personnel</p>
+              <h1 className="font-display text-2xl mt-1" style={{ fontWeight: 600 }}>Salaire, RTT & Congés</h1>
+              <p className="text-sm mt-1" style={{ color: "#B7C4BC" }}>Nicolas Jutge — Conseiller Assurance Réseau, Classe 3</p>
+            </div>
+          </div>
+          <div className="flex flex-col items-end gap-1.5 shrink-0">
+            <button onClick={reinitialiser} className="text-xs" style={{ color: "#8FA69B" }}>{confirmReset ? "confirmer ?" : "réinitialiser"}</button>
+            <button onClick={() => setBinConfig(null)} className="text-xs" style={{ color: "#8FA69B" }}>changer de bin</button>
+          </div>
+        </div>
+      </header>
+
+      {syncError && (<div className="px-4 pt-3"><p className="text-xs rounded-lg px-3 py-2" style={{ backgroundColor: COLORS.warnBg, color: COLORS.loss }}>{syncError}</p></div>)}
+
+      <main className="px-4 pt-5 max-w-xl mx-auto">
+        {tab === "dashboard" && <Dashboard dernierSalaire={dernierSalaire} soldeRTT={soldeRTT} soldeCP={soldeCP} prochaines={prochaines} today={today} />}
+        {tab === "salaires" && <SalairesTab personnes={state.personnes} updatePersonnes={updatePersonnes} config={state.config} updateConfig={updateConfig} />}
+        {tab === "primes" && <PrimesTab config={state.config} updateConfig={updateConfig} anneeActuelle={anneeActuelle} primeMontant={primeMontant} />}
+        {tab === "conges" && (
+          <CongesTab
+            config={state.config} updateConfig={updateConfig}
+            joursPris={state.joursPris} ajouterJour={ajouterJour} supprimerJour={supprimerJour}
+            periodesBloquees={state.periodesBloquees} ajouterPeriode={ajouterPeriode} supprimerPeriode={supprimerPeriode}
+            personnes={state.personnes} ajouterPersonne={ajouterPersonne} supprimerPersonne={supprimerPersonne} updatePersonne={updatePersonneChamp}
+            conges={conges} today={today}
+          />
+        )}
+      </main>
+
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-stone-200">
+        <div className="max-w-xl mx-auto grid grid-cols-4">
+          {tabs.map(function(t) {
+            return (<button key={t.id} onClick={() => setTab(t.id)} className="py-3 text-xs font-medium" style={{ color: tab === t.id ? COLORS.ink : "#A8A29E" }}>{t.label}</button>);
+          })}
+        </div>
+      </nav>
+
+      {saving && (<div className="fixed top-4 right-4 text-white text-xs px-3 py-1.5 rounded-full shadow-lg" style={{ backgroundColor: COLORS.ink }}>Enregistrement…</div>)}
+    </div>
+  );
+}
+
+function Dashboard({ dernierSalaire, soldeRTT, soldeCP, prochaines, today }) {
+  return (
+    <div className="space-y-4">
+      <Card dark>
+        <p className="text-xs uppercase tracking-wide" style={{ color: "#8FA69B" }}>Dernier salaire renseigné (Nicolas)</p>
+        {dernierSalaire ? (
+          <>
+            <p className="font-display font-mono text-3xl mt-1">{formatEUR(dernierSalaire[1].salaire)}</p>
+            <p className="text-xs mt-2" style={{ color: "#8FA69B" }}>{formatMoisAnnee(dernierSalaire[0])}</p>
+          </>
+        ) : (<p className="text-sm mt-2" style={{ color: "#8FA69B" }}>Renseigne un salaire dans l'onglet Salaires.</p>)}
+      </Card>
+      <div className="grid grid-cols-2 gap-3">
+        <Card><p className="text-xs text-stone-500">Solde RTT</p><p className="font-mono text-2xl mt-1">{formatJours(soldeRTT)}</p><p className="text-xs text-stone-400">jours</p></Card>
+        <Card><p className="text-xs text-stone-500">Solde CP</p><p className="font-mono text-2xl mt-1">{formatJours(soldeCP)}</p><p className="text-xs text-stone-400">jours</p></Card>
+      </div>
+      <Card>
+        <p className="text-sm font-medium mb-3">Prochaines échéances</p>
+        <div className="space-y-1">
+          {prochaines.map(function(p, i) {
+            return (<Row key={i} index={i}>
+              <div><p className="text-stone-800">{p.label}</p><p className="text-xs text-stone-400">{formatDateFR(toLocalISODate(p.date))}</p></div>
+              <p className="font-mono font-medium" style={{ color: COLORS.gain }}>{p.montant != null ? formatEUR(p.montant) : "à renseigner"}</p>
+            </Row>);
+          })}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function SalairesTab({ personnes, updatePersonnes, config, updateConfig }) {
+  const [personneId, setPersonneId] = useState(personnes[0].id);
+  const [annee, setAnnee] = useState(new Date().getFullYear());
+  const personne = personnes.filter(p => p.id === personneId)[0] || personnes[0];
+
+  function updateMois(mois, champ, valeur) {
+    const key = annee + "-" + String(mois).padStart(2, "0");
+    const next = personnes.map(function(p) {
+      if (p.id !== personneId) return p;
+      const entreesMensuelles = { ...p.entreesMensuelles };
+      entreesMensuelles[key] = { ...(entreesMensuelles[key] || {}) };
+      entreesMensuelles[key][champ] = valeur;
+      return { ...p, entreesMensuelles };
+    });
+    updatePersonnes(next);
+  }
+
+  const totaux = { salaire: 0, netFiscal: 0, ps: 0 };
+  for (let m = 1; m <= 12; m++) {
+    const key = annee + "-" + String(m).padStart(2, "0");
+    const e = personne.entreesMensuelles[key];
+    if (e) { totaux.salaire += Number(e.salaire) || 0; totaux.netFiscal += Number(e.netFiscal) || 0; totaux.ps += Number(e.ps) || 0; }
+  }
+
+  const coutMensuelSalarial = round2((Number(config.ticketNombreMois)||0) * (Number(config.ticketValeur)||0) * (Number(config.ticketPartSalarialePct)||0) / 100);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {personnes.map(function(p) {
+          return (<button key={p.id} onClick={() => setPersonneId(p.id)} className="px-3 py-1.5 rounded-full text-sm whitespace-nowrap"
+            style={{ backgroundColor: personneId === p.id ? COLORS.ink : COLORS.stripe, color: personneId === p.id ? "#fff" : COLORS.ink }}>
+            {p.nom || "(sans nom)"}
+          </button>);
+        })}
+      </div>
+
+      <Card>
+        <div className="flex items-center justify-between mb-3">
+          <button onClick={() => setAnnee(annee-1)} className="px-3 py-1 text-sm rounded-lg" style={{ backgroundColor: COLORS.stripe }}>◀</button>
+          <p className="font-display text-lg">{annee}</p>
+          <button onClick={() => setAnnee(annee+1)} className="px-3 py-1 text-sm rounded-lg" style={{ backgroundColor: COLORS.stripe }}>▶</button>
+        </div>
+        <div className="grid grid-cols-4 gap-1 text-xs text-stone-500 mb-1 px-1">
+          <span>Mois</span><span>Salaire</span><span>Net fiscal</span><span>PS</span>
+        </div>
+        <div className="space-y-1">
+          {MOIS_FR.map(function(m, i) {
+            const mois = i + 1;
+            const key = annee + "-" + String(mois).padStart(2, "0");
+            const e = personne.entreesMensuelles[key] || {};
+            return (
+              <div key={mois} className="grid grid-cols-4 gap-1 items-center rounded-lg px-1 py-1" style={{ backgroundColor: i % 2 === 1 ? COLORS.stripe : "transparent" }}>
+                <span className="text-xs font-mono capitalize">{m.slice(0,3)}</span>
+                <input type="number" step="0.01" value={e.salaire === undefined ? "" : e.salaire} placeholder="—"
+                  onChange={ev => updateMois(mois, "salaire", ev.target.value === "" ? "" : Number(ev.target.value))}
+                  className="font-mono w-full border border-stone-300 rounded px-1 py-1 text-xs" />
+                <input type="number" step="0.01" value={e.netFiscal === undefined ? "" : e.netFiscal} placeholder="—"
+                  onChange={ev => updateMois(mois, "netFiscal", ev.target.value === "" ? "" : Number(ev.target.value))}
+                  className="font-mono w-full border border-stone-300 rounded px-1 py-1 text-xs" />
+                <input type="number" step="0.01" value={e.ps === undefined ? "" : e.ps} placeholder="—"
+                  onChange={ev => updateMois(mois, "ps", ev.target.value === "" ? "" : Number(ev.target.value))}
+                  className="font-mono w-full border border-stone-300 rounded px-1 py-1 text-xs" />
+              </div>
+            );
+          })}
+        </div>
+        <div className="grid grid-cols-4 gap-1 items-center mt-2 pt-2 border-t border-stone-200 px-1">
+          <span className="text-xs font-semibold">Total</span>
+          <span className="font-mono text-xs font-semibold">{formatEUR(totaux.salaire)}</span>
+          <span className="font-mono text-xs font-semibold">{formatEUR(totaux.netFiscal)}</span>
+          <span className="font-mono text-xs font-semibold">{formatEUR(totaux.ps)}</span>
+        </div>
+      </Card>
+
+      {personneId === "nicolas" && (
+        <Card>
+          <p className="text-sm font-medium mb-3">Titres-restaurant</p>
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            <NumberField label="Nombre / mois" value={config.ticketNombreMois} onChange={v => updateConfig({ ticketNombreMois: v })} step="1" />
+            <NumberField label="Valeur unitaire" value={config.ticketValeur} onChange={v => updateConfig({ ticketValeur: v })} suffix="€" />
+            <NumberField label="Part salariale" value={config.ticketPartSalarialePct} onChange={v => updateConfig({ ticketPartSalarialePct: v })} suffix="%" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-lg p-3" style={{ backgroundColor: COLORS.stripe }}>
+              <p className="text-xs text-stone-500">Coût mensuel</p>
+              <p className="font-mono text-lg font-semibold">{formatEUR(coutMensuelSalarial)}</p>
+            </div>
+            <div className="rounded-lg p-3" style={{ backgroundColor: COLORS.stripe }}>
+              <p className="text-xs text-stone-500">Estimation annuelle (11 mois)</p>
+              <p className="font-mono text-lg font-semibold">{formatEUR(round2(coutMensuelSalarial * 11))}</p>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {personneId === "nicolas" && (
+        <>
+          <p className="text-sm font-medium px-1">Bulletins de référence</p>
+          {HISTORIQUE.map(function(b, i) {
+            return (
+              <Card key={i}>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-medium">{b.periode}</p>
+                  <p className="text-xs text-stone-400">payé le {formatDateFR(b.paiement)}</p>
+                </div>
+                <div className="font-mono grid grid-cols-2 gap-y-1.5 text-sm">
+                  <p className="text-stone-500 font-sans">Salaire réf.</p><p className="text-right">{formatEUR(b.salaireRef)}</p>
+                  <p className="text-stone-500 font-sans">Net payé</p><p className="text-right font-semibold">{formatEUR(b.netPaye)}</p>
+                  <p className="text-stone-500 font-sans">CP acquis/pris/solde</p><p className="text-right">{b.cpAcquis} / {b.cpPris} / {b.cpSolde}</p>
+                </div>
+                {b.note && <p className="text-xs mt-2 pt-2 border-t border-stone-100" style={{ color: COLORS.gold }}>{b.note}</p>}
+              </Card>
+            );
+          })}
+        </>
+      )}
+    </div>
+  );
+}
+
+function PrimeBox({ label, montant }) {
+  return (<div className="rounded-lg p-3" style={{ backgroundColor: COLORS.stripe }}>
+    <p className="text-xs text-stone-500">{label}</p>
+    <p className="font-mono text-lg font-semibold">{montant != null ? formatEUR(montant) : "à renseigner"}</p>
+  </div>);
+}
+
+function PrimesTab({ config, updateConfig, anneeActuelle, primeMontant }) {
+  return (
+    <div className="space-y-4">
+      <Card>
+        <p className="text-sm font-medium mb-1">Prime de vacances</p>
+        <p className="text-xs text-stone-400 mb-3">Versée en {MOIS_FR[config.moisPrimeVacances-1]}, calculée sur le salaire de Nicolas ce mois-là</p>
+        <div className="grid grid-cols-2 gap-3">
+          <PrimeBox label="Cette année" montant={primeMontant(config.primeVacancesPct, config.moisPrimeVacances, anneeActuelle)} />
+          <PrimeBox label="Année prochaine" montant={primeMontant(config.primeVacancesPct, config.moisPrimeVacances, anneeActuelle+1)} />
+        </div>
+        <div className="grid grid-cols-2 gap-3 mt-3">
+          <NumberField label="% du salaire" value={config.primeVacancesPct} onChange={v => updateConfig({ primeVacancesPct: v })} suffix="%" />
+          <label className="block">
+            <span className="text-xs text-stone-500">Mois de versement</span>
+            <select value={config.moisPrimeVacances} onChange={e => updateConfig({ moisPrimeVacances: Number(e.target.value) })} className="w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1">
+              {MOIS_FR.map((m,i) => <option key={i} value={i+1}>{m}</option>)}
+            </select>
+          </label>
+        </div>
+      </Card>
+      <Card>
+        <p className="text-sm font-medium mb-1">Prime de Noël</p>
+        <p className="text-xs text-stone-400 mb-3">Versée en {MOIS_FR[config.moisPrimeNoel-1]}, calculée sur le salaire de Nicolas ce mois-là</p>
+        <div className="grid grid-cols-2 gap-3">
+          <PrimeBox label="Cette année" montant={primeMontant(config.primeNoelPct, config.moisPrimeNoel, anneeActuelle)} />
+          <PrimeBox label="Année prochaine" montant={primeMontant(config.primeNoelPct, config.moisPrimeNoel, anneeActuelle+1)} />
+        </div>
+        <div className="grid grid-cols-2 gap-3 mt-3">
+          <NumberField label="% du salaire" value={config.primeNoelPct} onChange={v => updateConfig({ primeNoelPct: v })} suffix="%" />
+          <label className="block">
+            <span className="text-xs text-stone-500">Mois de versement</span>
+            <select value={config.moisPrimeNoel} onChange={e => updateConfig({ moisPrimeNoel: Number(e.target.value) })} className="w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1">
+              {MOIS_FR.map((m,i) => <option key={i} value={i+1}>{m}</option>)}
+            </select>
+          </label>
+        </div>
+      </Card>
+      <p className="text-xs text-stone-400 px-1">Calculée à partir du salaire réellement saisi pour Nicolas ce mois-là dans l'onglet Salaires.</p>
+    </div>
+  );
+}
+
+function CongesTab({ config, updateConfig, joursPris, ajouterJour, supprimerJour, periodesBloquees, ajouterPeriode, supprimerPeriode, personnes, ajouterPersonne, supprimerPersonne, updatePersonne, conges, today }) {
+  const [form, setForm] = useState({ date: "", type: "RTT", duree: "1", note: "" });
+  const [periodeForm, setPeriodeForm] = useState({ dateDebut: "", dateFin: "", label: "" });
+
+  const blackout = form.date ? dansPeriodeBloquee(form.date, periodesBloquees) : null;
+  const tropConsecutifs = (form.date && form.type === "RTT") ? depasseRTTConsecutifs(form.date, joursPris, Number(config.maxRttConsecutifs) || 5) : false;
+
+  function submit(e) {
+    e.preventDefault();
+    if (!form.date) return;
+    ajouterJour({ ...form, duree: Number(form.duree) });
+    setForm({ date: "", type: "RTT", duree: "1", note: "" });
+  }
+  function submitPeriode(e) {
+    e.preventDefault();
+    if (!periodeForm.dateDebut || !periodeForm.dateFin) return;
+    ajouterPeriode(periodeForm);
+    setPeriodeForm({ dateDebut: "", dateFin: "", label: "" });
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3">
+        <Card dark>
+          <p className="text-xs" style={{ color: "#8FA69B" }}>Solde RTT</p>
+          <p className="font-mono text-2xl mt-1">{formatJours(conges.soldeRTT)} j</p>
+          <p className="text-xs mt-1" style={{ color: "#8FA69B" }}>{formatJours(conges.rttAcquis)} acquis − {formatJours(conges.rttPris)} pris</p>
+        </Card>
+        <Card dark>
+          <p className="text-xs" style={{ color: "#8FA69B" }}>Solde CP</p>
+          <p className="font-mono text-2xl mt-1">{formatJours(conges.soldeCP)} j</p>
+          <p className="text-xs mt-1" style={{ color: "#8FA69B" }}>{formatJours(conges.cpAcquisFixe)} acquis − {formatJours(conges.cpPris)} pris</p>
+        </Card>
+      </div>
+
+      <Card>
+        <p className="text-xs text-stone-500">En cours d'acquisition (CP, cycle suivant)</p>
+        <p className="font-mono text-lg font-semibold mt-1">{formatJours(conges.cpEnCours)} j</p>
+        <p className="text-xs text-stone-400 mt-1">Cycle d'usage courant depuis le {formatDateFR(toLocalISODate(conges.debutCycleCP))} · RTT sur année civile depuis le 1er janvier</p>
+      </Card>
+
+      <Card>
+        <p className="text-sm font-medium mb-3">Ancienneté & congés supplémentaires</p>
+        <div className="space-y-1 mb-3">
+          {personnes.map(function(p, i) {
+            const annees = p.dateEntree ? anneesEcoulees(parseISO(p.dateEntree), today) : null;
+            const bonus = annees != null ? bonusAncienneteJours(annees) : 0;
+            const palier = prochainPalier(p.dateEntree, today);
+            return (
+              <Row key={p.id} index={i}>
+                <div>
+                  <p className="font-mono">{p.nom || "(sans nom)"}{annees != null ? " — " + annees + " ans" : ""}</p>
+                  {palier && <p className="text-xs text-stone-400">Prochain palier : {palier.annees} ans ({formatDateFR(toLocalISODate(palier.date))})</p>}
+                </div>
+                <p className="font-mono text-sm font-medium" style={{ color: bonus > 0 ? COLORS.gain : "#A8A29E" }}>{bonus > 0 ? "+" + bonus + " j" : "—"}</p>
+              </Row>
+            );
+          })}
+        </div>
+        <p className="text-xs text-stone-400 mb-3">+1 semaine (5 j) à 10 ans, +2 semaines à 20 ans, +3 semaines à 30 ans. Seul le bonus de Nicolas s'ajoute automatiquement à son solde CP.</p>
+        {personnes.map(function(p) {
+          return (
+            <div key={p.id} className="grid grid-cols-2 gap-2 mb-2">
+              <input type="text" value={p.nom} onChange={e => updatePersonne(p.id, { nom: e.target.value })} placeholder="Nom" className="border border-stone-300 rounded-lg px-3 py-2 text-sm" />
+              <div className="flex items-center gap-2">
+                <input type="date" value={p.dateEntree} onChange={e => updatePersonne(p.id, { dateEntree: e.target.value })} className="font-mono flex-1 border border-stone-300 rounded-lg px-3 py-2 text-sm" />
+                {p.id !== "nicolas" && <button onClick={() => supprimerPersonne(p.id)}><TrashIcon color={COLORS.loss} /></button>}
+              </div>
+            </div>
+          );
+        })}
+        <button onClick={ajouterPersonne} className="text-xs mt-1" style={{ color: COLORS.accent }}>+ Ajouter une personne</button>
+      </Card>
+
+      <Card>
+        <p className="text-sm font-medium mb-3">Bases & cycle</p>
+        <div className="grid grid-cols-2 gap-3">
+          <NumberField label="Base RTT / an" value={config.rttBaseAnnuel} onChange={v => updateConfig({ rttBaseAnnuel: v })} step="1" suffix="j" />
+          <NumberField label="Base CP / an" value={config.cpBaseAnnuel} onChange={v => updateConfig({ cpBaseAnnuel: v })} step="1" suffix="j" />
+          <label className="block">
+            <span className="text-xs text-stone-500">Début cycle CP (MM-JJ)</span>
+            <input type="text" value={config.cpCycleDebut} onChange={e => updateConfig({ cpCycleDebut: e.target.value })} placeholder="06-01" className="font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" />
+          </label>
+          <NumberField label="Max RTT consécutifs" value={config.maxRttConsecutifs} onChange={v => updateConfig({ maxRttConsecutifs: v })} step="1" suffix="j" />
+        </div>
+      </Card>
+
+      <Card>
+        <p className="text-sm font-medium mb-3">Périodes sans RTT/CP possible</p>
+        <div className="space-y-1 mb-3">
+          {periodesBloquees.length === 0 && <p className="text-sm text-stone-400">Aucune période définie.</p>}
+          {periodesBloquees.map(function(per, i) {
+            return (
+              <Row key={per.id} index={i}>
+                <div><p className="font-mono">{formatDateFR(per.dateDebut)} → {formatDateFR(per.dateFin)}</p>{per.label && <p className="text-xs text-stone-400">{per.label}</p>}</div>
+                <button onClick={() => supprimerPeriode(per.id)}><TrashIcon color={COLORS.loss} /></button>
+              </Row>
+            );
+          })}
+        </div>
+        <form onSubmit={submitPeriode} className="grid grid-cols-2 gap-2">
+          <input type="date" value={periodeForm.dateDebut} onChange={e => setPeriodeForm({ ...periodeForm, dateDebut: e.target.value })} className="font-mono border border-stone-300 rounded-lg px-3 py-2 text-sm" />
+          <input type="date" value={periodeForm.dateFin} onChange={e => setPeriodeForm({ ...periodeForm, dateFin: e.target.value })} className="font-mono border border-stone-300 rounded-lg px-3 py-2 text-sm" />
+          <input type="text" placeholder="Motif (optionnel)" value={periodeForm.label} onChange={e => setPeriodeForm({ ...periodeForm, label: e.target.value })} className="col-span-2 border border-stone-300 rounded-lg px-3 py-2 text-sm" />
+          <button type="submit" className="col-span-2 text-white rounded-lg py-2 text-sm font-medium" style={{ backgroundColor: COLORS.ink }}>Bloquer cette période</button>
+        </form>
+      </Card>
+
+      <Card>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-medium">Jours pris</p>
+          <button onClick={() => exporterICS(joursPris)} disabled={joursPris.length === 0} className="text-xs flex items-center gap-1 rounded-full px-3 py-1.5 disabled:opacity-40" style={{ backgroundColor: COLORS.stripe }}>
+            <DownloadIcon size={13} /> Exporter (.ics)
+          </button>
+        </div>
+        <div className="space-y-1 mb-3">
+          {joursPris.length === 0 && <p className="text-sm text-stone-400">Aucun jour saisi.</p>}
+          {joursPris.map(function(j, i) {
+            return (
+              <Row key={j.id} index={i}>
+                <div><p className="font-mono">{formatDateFR(j.date)} — {j.type}{Number(j.duree)===0.5 ? " (1/2 j)" : ""}</p>{j.note && <p className="text-xs text-stone-400">{j.note}</p>}</div>
+                <button onClick={() => supprimerJour(j.id)}><TrashIcon color={COLORS.loss} /></button>
+              </Row>
+            );
+          })}
+        </div>
+        <form onSubmit={submit} className="grid grid-cols-2 gap-2">
+          <input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="font-mono col-span-2 border border-stone-300 rounded-lg px-3 py-2 text-sm" />
+          <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-stone-300 rounded-lg px-3 py-2 text-sm">
+            <option value="RTT">RTT</option><option value="CP">CP</option>
+          </select>
+          <select value={form.duree} onChange={e => setForm({ ...form, duree: e.target.value })} className="border border-stone-300 rounded-lg px-3 py-2 text-sm">
+            <option value="1">Journée entière</option><option value="0.5">Demi-journée</option>
+          </select>
+          <input type="text" placeholder="Note (optionnel)" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} className="col-span-2 border border-stone-300 rounded-lg px-3 py-2 text-sm" />
+          {blackout && <Warning>Période bloquée{blackout.label ? " : " + blackout.label : ""} ({formatDateFR(blackout.dateDebut)} → {formatDateFR(blackout.dateFin)})</Warning>}
+          {tropConsecutifs && <Warning>Plus de {config.maxRttConsecutifs || 5} RTT consécutifs autour de cette date</Warning>}
+          <button type="submit" className="col-span-2 text-white rounded-lg py-2 text-sm font-medium" style={{ backgroundColor: COLORS.ink }}>Ajouter</button>
+        </form>
+      </Card>
+
+      <p className="text-xs text-stone-400 px-1">RTT calculé sur l'année civile en cours ; CP sur le cycle d'usage (1er juin → 31 mai par défaut). Suivi en temps réel, contrairement au bulletin officiel qui a un mois de décalage.</p>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App />);
+</script>
+</body>
+</html>
