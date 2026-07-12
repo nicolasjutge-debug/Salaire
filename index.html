@@ -150,6 +150,27 @@ function dansPeriodeBloquee(date, periodes) {
   return found.length ? found[0] : null;
 }
 function joursAdjacents(d1, d2) { return (parseISO(d2)-parseISO(d1))/86400000 === 1; }
+function joursDansPlage(dateDebut, dateFin, excludeWeekends) {
+  const result = [];
+  let d = parseISO(dateDebut);
+  const fin = parseISO(dateFin);
+  while (d <= fin) {
+    const jourSemaine = d.getDay();
+    if (!excludeWeekends || (jourSemaine !== 0 && jourSemaine !== 6)) result.push(toLocalISODate(d));
+    d = new Date(d.getFullYear(), d.getMonth(), d.getDate()+1);
+  }
+  return result;
+}
+function envoyerPeriodesParMail(periodes) {
+  const sujet = encodeURIComponent("Périodes sans RTT/CP possible");
+  const lignes = periodes.map(function(p) {
+    return "- " + formatDateFR(p.dateDebut) + " au " + formatDateFR(p.dateFin) + (p.label ? " (" + p.label + ")" : "");
+  });
+  const corps = encodeURIComponent(
+    (periodes.length ? "Voici les périodes durant lesquelles il n'est pas possible de poser des RTT/CP :\n\n" + lignes.join("\n") : "Aucune période bloquée définie pour le moment.")
+  );
+  window.location.href = "mailto:?subject=" + sujet + "&body=" + corps;
+}
 function depasseRTTConsecutifs(nouvelleDate, joursExistants, max) {
   const set = {};
   joursExistants.filter(j => j.type === "RTT").forEach(j => { set[j.date] = true; });
@@ -247,6 +268,18 @@ function TrashIcon({ size = 16, color = "currentColor" }) {
     <polyline points="3 6 5 6 21 6"></polyline>
     <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
     <path d="M10 11v6"></path><path d="M14 11v6"></path>
+  </svg>);
+}
+function EditIcon({ size = 16, color = "currentColor" }) {
+  return (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+  </svg>);
+}
+function MailIcon({ size = 14, color = "currentColor" }) {
+  return (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+    <polyline points="22 6 12 13 2 6"></polyline>
   </svg>);
 }
 function DownloadIcon({ size = 16, color = "currentColor" }) {
@@ -418,11 +451,28 @@ function App() {
     persist({ ...state, joursPris: next });
   }
   function supprimerJour(id) { persist({ ...state, joursPris: state.joursPris.filter(j => j.id !== id) }); }
+  function modifierJour(id, patch) {
+    const next = state.joursPris.map(function(j) { return j.id === id ? { ...j, ...patch } : j; }).sort((a,b) => a.date.localeCompare(b.date));
+    persist({ ...state, joursPris: next });
+  }
+  function ajouterJoursPlage(dates, type, duree, note) {
+    const existants = {};
+    state.joursPris.forEach(function(j) { existants[j.date + "|" + j.type] = true; });
+    const nouveaux = dates.filter(function(d) { return !existants[d + "|" + type]; })
+      .map(function(d) { return { id: uid(), date: d, type: type, duree: duree, note: note }; });
+    if (!nouveaux.length) return;
+    const next = [...state.joursPris, ...nouveaux].sort((a,b) => a.date.localeCompare(b.date));
+    persist({ ...state, joursPris: next });
+  }
   function ajouterPeriode(per) {
     const next = [...state.periodesBloquees, { id: uid(), ...per }].sort((a,b) => a.dateDebut.localeCompare(b.dateDebut));
     persist({ ...state, periodesBloquees: next });
   }
   function supprimerPeriode(id) { persist({ ...state, periodesBloquees: state.periodesBloquees.filter(p => p.id !== id) }); }
+  function modifierPeriode(id, patch) {
+    const next = state.periodesBloquees.map(function(p) { return p.id === id ? { ...p, ...patch } : p; }).sort((a,b) => a.dateDebut.localeCompare(b.dateDebut));
+    persist({ ...state, periodesBloquees: next });
+  }
   function ajouterPersonne() { updatePersonnes([...state.personnes, { id: uid(), nom: "", dateEntree: "", entreesMensuelles: {} }]); }
   function supprimerPersonne(id) { if (id === "nicolas") return; updatePersonnes(state.personnes.filter(p => p.id !== id)); }
   function updatePersonneChamp(id, patch) { updatePersonnes(state.personnes.map(p => p.id === id ? { ...p, ...patch } : p)); }
@@ -525,8 +575,8 @@ function App() {
         {tab === "conges" && (
           <CongesTab
             config={state.config} updateConfig={updateConfig}
-            joursPris={state.joursPris} ajouterJour={ajouterJour} supprimerJour={supprimerJour}
-            periodesBloquees={state.periodesBloquees} ajouterPeriode={ajouterPeriode} supprimerPeriode={supprimerPeriode}
+            joursPris={state.joursPris} ajouterJoursPlage={ajouterJoursPlage} modifierJour={modifierJour} supprimerJour={supprimerJour}
+            periodesBloquees={state.periodesBloquees} ajouterPeriode={ajouterPeriode} modifierPeriode={modifierPeriode} supprimerPeriode={supprimerPeriode}
             personnes={state.personnes} ajouterPersonne={ajouterPersonne} supprimerPersonne={supprimerPersonne} updatePersonne={updatePersonneChamp}
             conges={conges} today={today}
           />
@@ -602,6 +652,12 @@ function SalairesTab({ personnes, updatePersonnes, config, updateConfig }) {
   }
 
   const coutMensuelSalarial = round2((Number(config.ticketNombreMois)||0) * (Number(config.ticketValeur)||0) * (Number(config.ticketPartSalarialePct)||0) / 100);
+  let moisRenseignes = 0;
+  for (let m = 1; m <= 12; m++) {
+    const key = annee + "-" + String(m).padStart(2, "0");
+    if (personne.entreesMensuelles[key] && personne.entreesMensuelles[key].salaire) moisRenseignes++;
+  }
+  const trAnnuel = round2(coutMensuelSalarial * moisRenseignes);
 
   return (
     <div className="space-y-4">
@@ -654,7 +710,7 @@ function SalairesTab({ personnes, updatePersonnes, config, updateConfig }) {
 
       {personneId === "nicolas" && (
         <Card>
-          <p className="text-sm font-medium mb-3">Titres-restaurant</p>
+          <p className="text-sm font-medium mb-3">Titres-restaurant — {annee}</p>
           <div className="grid grid-cols-3 gap-2 mb-3">
             <NumberField label="Nombre / mois" value={config.ticketNombreMois} onChange={v => updateConfig({ ticketNombreMois: v })} step="1" />
             <NumberField label="Valeur unitaire" value={config.ticketValeur} onChange={v => updateConfig({ ticketValeur: v })} suffix="€" />
@@ -662,14 +718,15 @@ function SalairesTab({ personnes, updatePersonnes, config, updateConfig }) {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-lg p-3" style={{ backgroundColor: COLORS.stripe }}>
-              <p className="text-xs text-stone-500">Coût mensuel</p>
-              <p className="font-mono text-lg font-semibold">{formatEUR(coutMensuelSalarial)}</p>
+              <p className="text-xs text-stone-500">Salaire {annee}</p>
+              <p className="font-mono text-lg font-semibold">{formatEUR(totaux.salaire)}</p>
             </div>
             <div className="rounded-lg p-3" style={{ backgroundColor: COLORS.stripe }}>
-              <p className="text-xs text-stone-500">Estimation annuelle (11 mois)</p>
-              <p className="font-mono text-lg font-semibold">{formatEUR(round2(coutMensuelSalarial * 11))}</p>
+              <p className="text-xs text-stone-500">Titres-restaurant {annee} ({moisRenseignes} mois)</p>
+              <p className="font-mono text-lg font-semibold">{formatEUR(trAnnuel)}</p>
             </div>
           </div>
+          <p className="text-xs text-stone-400 mt-2">Coût mensuel : {formatEUR(coutMensuelSalarial)}. Le total annuel se base sur les mois où un salaire est renseigné ci-dessus.</p>
         </Card>
       )}
 
@@ -747,23 +804,55 @@ function PrimesTab({ config, updateConfig, anneeActuelle, primeMontant }) {
   );
 }
 
-function CongesTab({ config, updateConfig, joursPris, ajouterJour, supprimerJour, periodesBloquees, ajouterPeriode, supprimerPeriode, personnes, ajouterPersonne, supprimerPersonne, updatePersonne, conges, today }) {
-  const [form, setForm] = useState({ date: "", type: "RTT", duree: "1", note: "" });
+function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifierJour, supprimerJour, periodesBloquees, ajouterPeriode, modifierPeriode, supprimerPeriode, personnes, ajouterPersonne, supprimerPersonne, updatePersonne, conges, today }) {
+  const [form, setForm] = useState({ date: "", dateFin: "", type: "RTT", duree: "1", note: "" });
+  const [editingJourId, setEditingJourId] = useState(null);
   const [periodeForm, setPeriodeForm] = useState({ dateDebut: "", dateFin: "", label: "" });
+  const [editingPeriodeId, setEditingPeriodeId] = useState(null);
 
-  const blackout = form.date ? dansPeriodeBloquee(form.date, periodesBloquees) : null;
-  const tropConsecutifs = (form.date && form.type === "RTT") ? depasseRTTConsecutifs(form.date, joursPris, Number(config.maxRttConsecutifs) || 5) : false;
+  const maxRtt = Number(config.maxRttConsecutifs) || 5;
+  const dateFinEffective = form.dateFin || form.date;
+  const joursPlage = (form.date && !editingJourId) ? joursDansPlage(form.date, dateFinEffective, true) : (form.date ? [form.date] : []);
+  const blackoutsPlage = joursPlage.map(function(d) { return dansPeriodeBloquee(d, periodesBloquees); }).filter(Boolean);
+  const tropConsecutifs = form.type === "RTT" && joursPlage.some(function(d) { return depasseRTTConsecutifs(d, joursPris, maxRtt); });
 
+  function commencerEditionJour(j) {
+    setEditingJourId(j.id);
+    setForm({ date: j.date, dateFin: "", type: j.type, duree: String(j.duree), note: j.note || "" });
+  }
+  function annulerEditionJour() {
+    setEditingJourId(null);
+    setForm({ date: "", dateFin: "", type: "RTT", duree: "1", note: "" });
+  }
   function submit(e) {
     e.preventDefault();
     if (!form.date) return;
-    ajouterJour({ ...form, duree: Number(form.duree) });
-    setForm({ date: "", type: "RTT", duree: "1", note: "" });
+    if (editingJourId) {
+      modifierJour(editingJourId, { date: form.date, type: form.type, duree: Number(form.duree), note: form.note });
+      setEditingJourId(null);
+    } else {
+      ajouterJoursPlage(joursPlage, form.type, Number(form.duree), form.note);
+    }
+    setForm({ date: "", dateFin: "", type: "RTT", duree: "1", note: "" });
+  }
+
+  function commencerEditionPeriode(p) {
+    setEditingPeriodeId(p.id);
+    setPeriodeForm({ dateDebut: p.dateDebut, dateFin: p.dateFin, label: p.label || "" });
+  }
+  function annulerEditionPeriode() {
+    setEditingPeriodeId(null);
+    setPeriodeForm({ dateDebut: "", dateFin: "", label: "" });
   }
   function submitPeriode(e) {
     e.preventDefault();
     if (!periodeForm.dateDebut || !periodeForm.dateFin) return;
-    ajouterPeriode(periodeForm);
+    if (editingPeriodeId) {
+      modifierPeriode(editingPeriodeId, periodeForm);
+      setEditingPeriodeId(null);
+    } else {
+      ajouterPeriode(periodeForm);
+    }
     setPeriodeForm({ dateDebut: "", dateFin: "", label: "" });
   }
 
@@ -835,23 +924,35 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJour, supprimerJour
       </Card>
 
       <Card>
-        <p className="text-sm font-medium mb-3">Périodes sans RTT/CP possible</p>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-medium">Périodes sans RTT/CP possible</p>
+          <button onClick={() => envoyerPeriodesParMail(periodesBloquees)} className="text-xs flex items-center gap-1 rounded-full px-3 py-1.5" style={{ backgroundColor: COLORS.stripe }}>
+            <MailIcon size={12} /> Envoyer par mail
+          </button>
+        </div>
         <div className="space-y-1 mb-3">
           {periodesBloquees.length === 0 && <p className="text-sm text-stone-400">Aucune période définie.</p>}
           {periodesBloquees.map(function(per, i) {
             return (
               <Row key={per.id} index={i}>
                 <div><p className="font-mono">{formatDateFR(per.dateDebut)} → {formatDateFR(per.dateFin)}</p>{per.label && <p className="text-xs text-stone-400">{per.label}</p>}</div>
-                <button onClick={() => supprimerPeriode(per.id)}><TrashIcon color={COLORS.loss} /></button>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => commencerEditionPeriode(per)}><EditIcon size={15} color={COLORS.accent} /></button>
+                  <button onClick={() => supprimerPeriode(per.id)}><TrashIcon color={COLORS.loss} /></button>
+                </div>
               </Row>
             );
           })}
         </div>
+        {editingPeriodeId && <p className="text-xs mb-2" style={{ color: COLORS.accent }}>Modification d'une période existante</p>}
         <form onSubmit={submitPeriode} className="grid grid-cols-2 gap-2">
           <input type="date" value={periodeForm.dateDebut} onChange={e => setPeriodeForm({ ...periodeForm, dateDebut: e.target.value })} className="font-mono border border-stone-300 rounded-lg px-3 py-2 text-sm" />
           <input type="date" value={periodeForm.dateFin} onChange={e => setPeriodeForm({ ...periodeForm, dateFin: e.target.value })} className="font-mono border border-stone-300 rounded-lg px-3 py-2 text-sm" />
           <input type="text" placeholder="Motif (optionnel)" value={periodeForm.label} onChange={e => setPeriodeForm({ ...periodeForm, label: e.target.value })} className="col-span-2 border border-stone-300 rounded-lg px-3 py-2 text-sm" />
-          <button type="submit" className="col-span-2 text-white rounded-lg py-2 text-sm font-medium" style={{ backgroundColor: COLORS.ink }}>Bloquer cette période</button>
+          <button type="submit" className="text-white rounded-lg py-2 text-sm font-medium" style={{ backgroundColor: COLORS.ink, gridColumn: editingPeriodeId ? "span 1 / span 1" : "span 2 / span 2" }}>
+            {editingPeriodeId ? "Enregistrer" : "Bloquer cette période"}
+          </button>
+          {editingPeriodeId && <button type="button" onClick={annulerEditionPeriode} className="rounded-lg text-sm" style={{ backgroundColor: COLORS.stripe, color: COLORS.ink }}>Annuler</button>}
         </form>
       </Card>
 
@@ -868,13 +969,28 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJour, supprimerJour
             return (
               <Row key={j.id} index={i}>
                 <div><p className="font-mono">{formatDateFR(j.date)} — {j.type}{Number(j.duree)===0.5 ? " (1/2 j)" : ""}</p>{j.note && <p className="text-xs text-stone-400">{j.note}</p>}</div>
-                <button onClick={() => supprimerJour(j.id)}><TrashIcon color={COLORS.loss} /></button>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => commencerEditionJour(j)}><EditIcon size={15} color={COLORS.accent} /></button>
+                  <button onClick={() => supprimerJour(j.id)}><TrashIcon color={COLORS.loss} /></button>
+                </div>
               </Row>
             );
           })}
         </div>
+        {editingJourId ? (
+          <p className="text-xs mb-2" style={{ color: COLORS.accent }}>Modification d'un jour existant</p>
+        ) : (
+          <p className="text-xs text-stone-400 mb-2">Renseigne une date de fin pour poser une période complète (week-ends exclus automatiquement).</p>
+        )}
         <form onSubmit={submit} className="grid grid-cols-2 gap-2">
-          <input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="font-mono col-span-2 border border-stone-300 rounded-lg px-3 py-2 text-sm" />
+          <label className="block">
+            <span className="text-xs text-stone-500">Du</span>
+            <input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" />
+          </label>
+          <label className="block">
+            <span className="text-xs text-stone-500">Au {editingJourId ? "" : "(optionnel)"}</span>
+            <input type="date" disabled={!!editingJourId} value={form.dateFin} onChange={e => setForm({ ...form, dateFin: e.target.value })} className="font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1 disabled:opacity-50" />
+          </label>
           <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-stone-300 rounded-lg px-3 py-2 text-sm">
             <option value="RTT">RTT</option><option value="CP">CP</option>
           </select>
@@ -882,9 +998,13 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJour, supprimerJour
             <option value="1">Journée entière</option><option value="0.5">Demi-journée</option>
           </select>
           <input type="text" placeholder="Note (optionnel)" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} className="col-span-2 border border-stone-300 rounded-lg px-3 py-2 text-sm" />
-          {blackout && <Warning>Période bloquée{blackout.label ? " : " + blackout.label : ""} ({formatDateFR(blackout.dateDebut)} → {formatDateFR(blackout.dateFin)})</Warning>}
-          {tropConsecutifs && <Warning>Plus de {config.maxRttConsecutifs || 5} RTT consécutifs autour de cette date</Warning>}
-          <button type="submit" className="col-span-2 text-white rounded-lg py-2 text-sm font-medium" style={{ backgroundColor: COLORS.ink }}>Ajouter</button>
+          {!editingJourId && joursPlage.length > 1 && <p className="col-span-2 text-xs text-stone-400">{joursPlage.length} jour(s) ouvré(s) seront ajoutés.</p>}
+          {blackoutsPlage.length > 0 && <Warning>{blackoutsPlage.length > 1 ? blackoutsPlage.length + " jours tombent" : "Cette date tombe"} dans une période bloquée{blackoutsPlage[0].label ? " : " + blackoutsPlage[0].label : ""}</Warning>}
+          {tropConsecutifs && <Warning>Dépasse {maxRtt} RTT consécutifs</Warning>}
+          <div className="col-span-2 flex gap-2">
+            <button type="submit" className="flex-1 text-white rounded-lg py-2 text-sm font-medium" style={{ backgroundColor: COLORS.ink }}>{editingJourId ? "Enregistrer" : "Ajouter"}</button>
+            {editingJourId && <button type="button" onClick={annulerEditionJour} className="px-4 rounded-lg text-sm" style={{ backgroundColor: COLORS.stripe, color: COLORS.ink }}>Annuler</button>}
+          </div>
         </form>
       </Card>
 
