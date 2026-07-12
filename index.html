@@ -201,6 +201,47 @@ function saveState(nextState) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState)); return true; } catch (e) { return false; }
 }
 
+const BINCONFIG_KEY = "suivi_salaire_jsonbin_config";
+function loadBinConfig() {
+  try {
+    const raw = localStorage.getItem(BINCONFIG_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+function saveBinConfig(cfg) {
+  try {
+    if (cfg) localStorage.setItem(BINCONFIG_KEY, JSON.stringify(cfg));
+    else localStorage.removeItem(BINCONFIG_KEY);
+  } catch (e) {}
+}
+
+const JSONBIN_BASE = "https://api.jsonbin.io/v3/b";
+async function jsonBinRead(cfg) {
+  const res = await fetch(JSONBIN_BASE + "/" + cfg.binId + "/latest", { headers: { "X-Master-Key": cfg.apiKey } });
+  if (!res.ok) throw new Error("read failed");
+  const data = await res.json();
+  return data.record;
+}
+async function jsonBinWrite(cfg, record) {
+  const res = await fetch(JSONBIN_BASE + "/" + cfg.binId, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", "X-Master-Key": cfg.apiKey },
+    body: JSON.stringify(record),
+  });
+  if (!res.ok) throw new Error("write failed");
+  return res.json();
+}
+async function jsonBinCreate(apiKey, record) {
+  const res = await fetch(JSONBIN_BASE, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Master-Key": apiKey, "X-Bin-Name": "suivi-salaire" },
+    body: JSON.stringify(record),
+  });
+  if (!res.ok) throw new Error("create failed");
+  const data = await res.json();
+  return data.metadata.id;
+}
+
 function TrashIcon({ size = 16, color = "currentColor" }) {
   return (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="3 6 5 6 21 6"></polyline>
@@ -245,17 +286,129 @@ function Warning({ children }) {
   </p>);
 }
 
+function SyncPanel({ binConfig, onConnect, onDisconnect, currentState, onClose }) {
+  const [apiKey, setApiKey] = useState("");
+  const [binId, setBinId] = useState("");
+  const [mode, setMode] = useState("create");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleConnect(e) {
+    e.preventDefault();
+    if (!apiKey.trim()) { setError("Clé API requise."); return; }
+    setBusy(true); setError("");
+    try {
+      if (mode === "create") {
+        const id = await jsonBinCreate(apiKey.trim(), currentState);
+        onConnect({ apiKey: apiKey.trim(), binId: id });
+      } else {
+        if (!binId.trim()) { setError("Bin ID requis."); setBusy(false); return; }
+        await jsonBinRead({ apiKey: apiKey.trim(), binId: binId.trim() });
+        onConnect({ apiKey: apiKey.trim(), binId: binId.trim() });
+      }
+      onClose();
+    } catch (err) {
+      setError("Connexion impossible. Vérifie ta clé API" + (mode === "existing" ? " et le Bin ID." : "."));
+    }
+    setBusy(false);
+  }
+
+  if (binConfig) {
+    return (
+      <Card>
+        <p className="text-sm font-medium mb-1">Synchronisation cloud active</p>
+        <p className="text-xs text-stone-400 mb-3 font-mono">Bin ID : {binConfig.binId}</p>
+        <div className="flex gap-2">
+          <button onClick={() => { onDisconnect(); onClose(); }} className="text-xs" style={{ color: COLORS.loss }}>Déconnecter</button>
+          <button onClick={onClose} className="text-xs" style={{ color: COLORS.accent }}>Fermer</button>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <p className="text-sm font-medium mb-1">Synchroniser entre appareils (JSONBin)</p>
+      <p className="text-xs text-stone-400 mb-3">Optionnel — tes données restent aussi enregistrées localement.</p>
+      <div className="flex gap-2 mb-3">
+        <button type="button" onClick={() => setMode("create")} className="flex-1 py-2 rounded-lg text-sm"
+          style={{ backgroundColor: mode === "create" ? COLORS.ink : COLORS.stripe, color: mode === "create" ? "#fff" : COLORS.ink }}>Créer un bin</button>
+        <button type="button" onClick={() => setMode("existing")} className="flex-1 py-2 rounded-lg text-sm"
+          style={{ backgroundColor: mode === "existing" ? COLORS.ink : COLORS.stripe, color: mode === "existing" ? "#fff" : COLORS.ink }}>J'ai déjà un bin</button>
+      </div>
+      <form onSubmit={handleConnect} className="space-y-3">
+        <label className="block">
+          <span className="text-xs text-stone-500">Clé API JSONBin (X-Master-Key)</span>
+          <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)}
+            className="font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" />
+        </label>
+        {mode === "existing" && (
+          <label className="block">
+            <span className="text-xs text-stone-500">Bin ID</span>
+            <input type="text" value={binId} onChange={e => setBinId(e.target.value)}
+              className="font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" />
+          </label>
+        )}
+        {error && <p className="text-xs" style={{ color: COLORS.loss }}>{error}</p>}
+        <div className="flex gap-2">
+          <button type="submit" disabled={busy} className="flex-1 text-white rounded-lg py-2 text-sm font-medium disabled:opacity-50" style={{ backgroundColor: COLORS.ink }}>
+            {busy ? "Connexion…" : (mode === "create" ? "Créer et connecter" : "Connecter")}
+          </button>
+          <button type="button" onClick={onClose} className="px-4 rounded-lg text-sm" style={{ backgroundColor: COLORS.stripe, color: COLORS.ink }}>Annuler</button>
+        </div>
+      </form>
+      <p className="text-xs text-stone-400 mt-3">Pas de compte ? Crée-en un gratuitement sur jsonbin.io, copie ta X-Master-Key depuis ton tableau de bord.</p>
+    </Card>
+  );
+}
+
 function App() {
   const [state, setState] = useState(loadState);
+  const [binConfig, setBinConfigState] = useState(loadBinConfig);
+  const [showSync, setShowSync] = useState(false);
+  const [syncStatus, setSyncStatus] = useState("idle"); // idle | syncing | synced | error
   const [tab, setTab] = useState("dashboard");
   const [confirmReset, setConfirmReset] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  useEffect(function() {
+    if (!binConfig) return;
+    setSyncStatus("syncing");
+    (async function() {
+      try {
+        const record = await jsonBinRead(binConfig);
+        const merged = { ...DEFAULT_STATE, ...record, config: { ...DEFAULT_STATE.config, ...(record.config || {}) } };
+        setState(merged);
+        saveState(merged);
+        setSyncStatus("synced");
+      } catch (e) {
+        setSyncStatus("error");
+      }
+    })();
+  }, []);
 
   function persist(nextState) {
     setState(nextState);
     setSaving(true);
     saveState(nextState);
+    if (binConfig) {
+      setSyncStatus("syncing");
+      jsonBinWrite(binConfig, nextState)
+        .then(() => setSyncStatus("synced"))
+        .catch(() => setSyncStatus("error"));
+    }
     setTimeout(() => setSaving(false), 400);
+  }
+
+  function connecterSync(cfg) {
+    setBinConfigState(cfg);
+    saveBinConfig(cfg);
+    setSyncStatus("synced");
+  }
+  function deconnecterSync() {
+    setBinConfigState(null);
+    saveBinConfig(null);
+    setSyncStatus("idle");
   }
 
   function updateConfig(patch) { persist({ ...state, config: { ...state.config, ...patch } }); }
@@ -346,13 +499,23 @@ function App() {
             </div>
           </div>
           <div className="flex flex-col items-end gap-1.5 shrink-0">
+            <button onClick={() => setShowSync(!showSync)} className="text-xs" style={{ color: "#8FA69B" }}>
+              {binConfig ? (syncStatus === "error" ? "sync ⚠" : "sync ✓") : "synchroniser"}
+            </button>
             <button onClick={reinitialiser} className="text-xs" style={{ color: "#8FA69B" }}>{confirmReset ? "confirmer ?" : "réinitialiser"}</button>
           </div>
         </div>
       </header>
 
       <div className="px-4 pt-3">
-        <p className="text-xs text-stone-400">Données enregistrées localement sur cet appareil et ce navigateur.</p>
+        <p className="text-xs text-stone-400">
+          {binConfig ? "Synchronisé avec ton bin JSONBin (+ copie locale sur cet appareil)." : "Données enregistrées localement sur cet appareil et ce navigateur."}
+        </p>
+        {showSync && (
+          <div className="mt-2">
+            <SyncPanel binConfig={binConfig} onConnect={connecterSync} onDisconnect={deconnecterSync} currentState={state} onClose={() => setShowSync(false)} />
+          </div>
+        )}
       </div>
 
       <main className="px-4 pt-5 max-w-xl mx-auto">
