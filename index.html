@@ -170,6 +170,15 @@ function joursDansPlage(dateDebut, dateFin, excludeWeekends) {
   }
   return result;
 }
+function semaineOuvree(dateStr) {
+  const d = parseISO(dateStr);
+  const jourSemaine = d.getDay();
+  const diffLundi = jourSemaine === 0 ? -6 : 1 - jourSemaine;
+  const lundi = new Date(d.getFullYear(), d.getMonth(), d.getDate() + diffLundi);
+  const jours = [];
+  for (let i = 0; i < 5; i++) jours.push(toLocalISODate(new Date(lundi.getFullYear(), lundi.getMonth(), lundi.getDate() + i)));
+  return jours;
+}
 function joursOuvresDansMois(annee, mois) {
   const debut = new Date(annee, mois-1, 1);
   const fin = new Date(annee, mois, 0);
@@ -238,7 +247,10 @@ function estimerAnnee(personne, annee, joursPris, config) {
     const joursOuvres = joursOuvresDansMois(annee, m);
     const rttPrisMois = joursPris.filter(function(j){ return j.date.slice(0,7)===key && j.type==="RTT"; }).reduce(function(s,j){return s+Number(j.duree);},0);
     const cpPrisMois = joursPris.filter(function(j){ return j.date.slice(0,7)===key && j.type==="CP"; }).reduce(function(s,j){return s+Number(j.duree);},0);
-    const joursTravailles = Math.max(0, joursOuvres - rttPrisMois - cpPrisMois);
+    const estJourOuvre = function(j) { const js = parseISO(j.date).getDay(); return js !== 0 && js !== 6; };
+    const rttPrisOuvre = joursPris.filter(function(j){ return j.date.slice(0,7)===key && j.type==="RTT" && estJourOuvre(j); }).reduce(function(s,j){return s+Number(j.duree);},0);
+    const cpPrisOuvre = joursPris.filter(function(j){ return j.date.slice(0,7)===key && j.type==="CP" && estJourOuvre(j); }).reduce(function(s,j){return s+Number(j.duree);},0);
+    const joursTravailles = Math.max(0, joursOuvres - rttPrisOuvre - cpPrisOuvre);
     const valeurTR = round2(joursTravailles * (Number(config.ticketValeur)||0) * (Number(config.ticketPartSalarialePct)||0) / 100);
     const totalMois = round2(salaireBase + primeExperience);
 
@@ -455,6 +467,13 @@ function NumberField({ label, value, onChange, step = "0.01", suffix }) {
         className="font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-400" />
       {suffix && <span className="text-xs text-stone-400">{suffix}</span>}
     </div>
+  </label>);
+}
+function TextDateField({ label, value, onChange }) {
+  return (<label className="block">
+    <span className="text-xs text-stone-500">{label}</span>
+    <input type="date" value={value} onChange={e => onChange(e.target.value)}
+      className="font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-stone-400" />
   </label>);
 }
 function Row({ children, index = 0 }) {
@@ -1078,8 +1097,8 @@ function EstimationTab({ nicolas, joursPris, config, updateConfig, archives, ajo
                   <p className="font-medium capitalize mb-1">{MOIS_FR[m.mois-1]} {annee}{m.estimeSalaire ? " (estimé)" : " (réel)"}</p>
                   <p className="text-stone-500 font-mono">Salaire base : {formatEUR(m.salaireBase)}{m.valorisationAppliquee ? " (dont +" + config.valorisationConventionPct + "% valorisation)" : ""}</p>
                   <p className="text-stone-500 font-mono">Prime d'expérience : {formatEUR(m.salaireBase)} × {config.tauxPrimeExperience}% = {formatEUR(m.primeExperience)}</p>
-                  <p className="text-stone-500 font-mono">Jours ouvrés : {m.joursOuvres} − RTT {m.rttPris} − CP {m.cpPris} = {m.joursTravailles} jours travaillés</p>
-                  <p className="text-stone-500 font-mono">TR : {m.joursTravailles} × {formatEUR(config.ticketValeur)} × {config.ticketPartSalarialePct}% = {formatEUR(m.valeurTR)}</p>
+                  <p className="text-stone-500 font-mono">Jours ouvrés : {m.joursOuvres} − 🌴 CP {m.cpPris} − 📅 RTT {m.rttPris} − 🚫 autres absences 0 (non gérées) = {m.joursTravailles} jours travaillés</p>
+                  <p className="text-stone-500 font-mono">🍽️ TR attribués : {m.ticketsEstimes} × {formatEUR(config.ticketValeur)} × {config.ticketPartSalarialePct}% = 💶 {formatEUR(m.valeurTR)}</p>
                   <p className="font-medium mt-1">Total du mois : {formatEUR(m.totalMois)}</p>
                 </div>
               );
@@ -1106,8 +1125,8 @@ function EstimationTab({ nicolas, joursPris, config, updateConfig, archives, ajo
           <p>Prime d'expérience = Salaire mensuel × Taux prime ({config.tauxPrimeExperience}%)</p>
           <p>Brut estimé = Salaire mensuel × {config.ratioBrutSurBase} (ratio observé sur bulletins réels)</p>
           <p>Net estimé = Brut estimé × {config.ratioNetSurBrut} (ratio observé sur bulletins réels)</p>
-          <p>Jours travaillés = Jours ouvrés du mois − RTT pris − CP pris</p>
-          <p>Valeur TR = Jours travaillés × Valeur unitaire × Part salariale ({config.ticketPartSalarialePct}%)</p>
+          <p>Jours travaillés (= nb TR) = Jours ouvrés du mois − CP pris − RTT pris (week-ends jamais déduits deux fois)</p>
+          <p>Valeur TR = Nb TR × Valeur unitaire × Part salariale ({config.ticketPartSalarialePct}%) — cumul annuel = somme des 12 mois</p>
           <p>Total mensuel = Salaire mensuel + Prime d'expérience</p>
         </div>
         <div className="grid grid-cols-2 gap-3 mt-3 pt-3 border-t border-stone-200">
@@ -1158,6 +1177,10 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifie
   const [editingPeriodeId, setEditingPeriodeId] = useState(null);
   const [anneeRTT, setAnneeRTT] = useState(today.getFullYear());
 
+  const [modeSelection, setModeSelection] = useState("jours");
+  const [joursChoisis, setJoursChoisis] = useState([]);
+  const [dateAAjouter, setDateAAjouter] = useState("");
+
   const nicolasP = personnes.filter(function(p) { return p.id === "nicolas"; })[0];
   const rttMensuel = useMemo(function() {
     return calculRTTMensuel(anneeRTT, joursPris, config.rttBaseAnnuel, nicolasP ? nicolasP.dateEntree : null);
@@ -1165,9 +1188,25 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifie
 
   const maxRtt = Number(config.maxRttConsecutifs) || 5;
   const dateFinEffective = form.dateFin || form.date;
-  const joursPlage = (form.date && !editingJourId) ? joursDansPlage(form.date, dateFinEffective, true) : (form.date ? [form.date] : []);
+  let joursPlage = [];
+  if (editingJourId) {
+    joursPlage = form.date ? [form.date] : [];
+  } else if (modeSelection === "jours") {
+    joursPlage = joursChoisis;
+  } else if (modeSelection === "semaine") {
+    joursPlage = form.date ? semaineOuvree(form.date) : [];
+  } else {
+    joursPlage = form.date ? joursDansPlage(form.date, dateFinEffective, true) : [];
+  }
   const blackoutsPlage = joursPlage.map(function(d) { return dansPeriodeBloquee(d, periodesBloquees); }).filter(Boolean);
   const tropConsecutifs = form.type === "RTT" && joursPlage.some(function(d) { return depasseRTTConsecutifs(d, joursPris, maxRtt); });
+  const chevauchements = joursPlage.filter(function(d) { return joursPris.some(function(j) { return j.date === d && (!editingJourId || j.id !== editingJourId); }); });
+  const dureeUnitaire = Number(form.duree) || 0;
+  const dureeTotale = round2(joursPlage.length * dureeUnitaire);
+  const soldeActuelType = form.type === "RTT" ? conges.soldeRTT : conges.soldeCP;
+  const soldeApres = round2(soldeActuelType - dureeTotale + (editingJourId ? Number(form.duree) : 0));
+  const soldeNegatif = soldeApres < 0;
+  const blocageSubmit = !editingJourId && (soldeNegatif || chevauchements.length > 0);
 
   function commencerEditionJour(j) {
     setEditingJourId(j.id);
@@ -1176,17 +1215,29 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifie
   function annulerEditionJour() {
     setEditingJourId(null);
     setForm({ date: "", dateFin: "", type: "RTT", duree: "1", note: "" });
+    setJoursChoisis([]);
+  }
+  function ajouterDateChoisie() {
+    if (!dateAAjouter) return;
+    if (joursChoisis.indexOf(dateAAjouter) === -1) setJoursChoisis([...joursChoisis, dateAAjouter].sort());
+    setDateAAjouter("");
+  }
+  function retirerDateChoisie(d) {
+    setJoursChoisis(joursChoisis.filter(function(x) { return x !== d; }));
   }
   function submit(e) {
     e.preventDefault();
-    if (!form.date) return;
+    if (blocageSubmit) return;
     if (editingJourId) {
+      if (!form.date) return;
       modifierJour(editingJourId, { date: form.date, type: form.type, duree: Number(form.duree), note: form.note });
       setEditingJourId(null);
     } else {
+      if (!joursPlage.length) return;
       ajouterJoursPlage(joursPlage, form.type, Number(form.duree), form.note);
+      setJoursChoisis([]);
     }
-    setForm({ date: "", dateFin: "", type: "RTT", duree: "1", note: "" });
+    setForm({ date: "", dateFin: "", type: form.type, duree: "1", note: "" });
   }
 
   function commencerEditionPeriode(p) {
@@ -1338,17 +1389,15 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifie
 
       <Card>
         <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-medium">Jours pris</p>
-          <button onClick={() => exporterICS(joursPris)} disabled={joursPris.length === 0} className="text-xs flex items-center gap-1 rounded-full px-3 py-1.5 disabled:opacity-40" style={{ backgroundColor: COLORS.stripe }}>
-            <DownloadIcon size={13} /> Exporter (.ics)
-          </button>
+          <p className="text-sm font-medium">🌴 Historique CP</p>
+          <p className="text-xs text-stone-400">{joursPris.filter(function(j){return j.type==="CP";}).length} entrée(s)</p>
         </div>
-        <div className="space-y-1 mb-3">
-          {joursPris.length === 0 && <p className="text-sm text-stone-400">Aucun jour saisi.</p>}
-          {joursPris.map(function(j, i) {
+        <div className="space-y-1">
+          {joursPris.filter(function(j){return j.type==="CP";}).length === 0 && <p className="text-sm text-stone-400">Aucun CP saisi.</p>}
+          {joursPris.filter(function(j){return j.type==="CP";}).map(function(j, i) {
             return (
               <Row key={j.id} index={i}>
-                <div><p className="font-mono">{formatDateFR(j.date)} — {j.type}{Number(j.duree)===0.5 ? " (1/2 j)" : ""}</p>{j.note && <p className="text-xs text-stone-400">{j.note}</p>}</div>
+                <div><p className="font-mono">{formatDateFR(j.date)}{Number(j.duree)===0.5 ? " (1/2 j)" : ""}</p>{j.note && <p className="text-xs text-stone-400">{j.note}</p>}</div>
                 <div className="flex items-center gap-2">
                   <button onClick={() => commencerEditionJour(j)}><EditIcon size={15} color={COLORS.accent} /></button>
                   <button onClick={() => supprimerJour(j.id)}><TrashIcon color={COLORS.loss} /></button>
@@ -1357,32 +1406,128 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifie
             );
           })}
         </div>
-        {editingJourId ? (
-          <p className="text-xs mb-2" style={{ color: COLORS.accent }}>Modification d'un jour existant</p>
-        ) : (
-          <p className="text-xs text-stone-400 mb-2">Renseigne une date de fin pour poser une période complète (week-ends exclus automatiquement).</p>
+      </Card>
+
+      <Card>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-medium">📆 Historique RTT</p>
+          <p className="text-xs text-stone-400">{joursPris.filter(function(j){return j.type==="RTT";}).length} entrée(s)</p>
+        </div>
+        <div className="space-y-1">
+          {joursPris.filter(function(j){return j.type==="RTT";}).length === 0 && <p className="text-sm text-stone-400">Aucun RTT saisi.</p>}
+          {joursPris.filter(function(j){return j.type==="RTT";}).map(function(j, i) {
+            return (
+              <Row key={j.id} index={i}>
+                <div><p className="font-mono">{formatDateFR(j.date)}{Number(j.duree)===0.5 ? " (1/2 j)" : ""}</p>{j.note && <p className="text-xs text-stone-400">{j.note}</p>}</div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => commencerEditionJour(j)}><EditIcon size={15} color={COLORS.accent} /></button>
+                  <button onClick={() => supprimerJour(j.id)}><TrashIcon color={COLORS.loss} /></button>
+                </div>
+              </Row>
+            );
+          })}
+        </div>
+      </Card>
+
+      <Card>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-medium">{editingJourId ? "Modifier une entrée" : "Poser une absence"}</p>
+          <button onClick={() => exporterICS(joursPris)} disabled={joursPris.length === 0} className="text-xs flex items-center gap-1 rounded-full px-3 py-1.5 disabled:opacity-40" style={{ backgroundColor: COLORS.stripe }}>
+            <DownloadIcon size={13} /> Exporter (.ics)
+          </button>
+        </div>
+
+        <p className="text-xs text-stone-500 mb-1">Type d'absence</p>
+        <div className="flex gap-2 mb-3">
+          <button type="button" onClick={() => setForm({ ...form, type: "CP" })} className="flex-1 py-2 rounded-lg text-sm"
+            style={{ backgroundColor: form.type === "CP" ? COLORS.ink : COLORS.stripe, color: form.type === "CP" ? "#fff" : COLORS.ink }}>🌴 Congés Payés</button>
+          <button type="button" onClick={() => setForm({ ...form, type: "RTT" })} className="flex-1 py-2 rounded-lg text-sm"
+            style={{ backgroundColor: form.type === "RTT" ? COLORS.ink : COLORS.stripe, color: form.type === "RTT" ? "#fff" : COLORS.ink }}>📅 RTT</button>
+        </div>
+
+        {!editingJourId && (
+          <>
+            <p className="text-xs text-stone-500 mb-1">Mode de sélection</p>
+            <div className="flex gap-2 mb-3">
+              <button type="button" onClick={() => setModeSelection("jours")} className="flex-1 py-2 rounded-lg text-xs"
+                style={{ backgroundColor: modeSelection === "jours" ? COLORS.ink : COLORS.stripe, color: modeSelection === "jours" ? "#fff" : COLORS.ink }}>📅 Jour(s)</button>
+              <button type="button" onClick={() => setModeSelection("semaine")} className="flex-1 py-2 rounded-lg text-xs"
+                style={{ backgroundColor: modeSelection === "semaine" ? COLORS.ink : COLORS.stripe, color: modeSelection === "semaine" ? "#fff" : COLORS.ink }}>🗓️ Semaine</button>
+              <button type="button" onClick={() => setModeSelection("periode")} className="flex-1 py-2 rounded-lg text-xs"
+                style={{ backgroundColor: modeSelection === "periode" ? COLORS.ink : COLORS.stripe, color: modeSelection === "periode" ? "#fff" : COLORS.ink }}>📆 Période</button>
+            </div>
+          </>
         )}
+
         <form onSubmit={submit} className="grid grid-cols-2 gap-2">
-          <label className="block">
-            <span className="text-xs text-stone-500">Du</span>
-            <input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" />
-          </label>
-          <label className="block">
-            <span className="text-xs text-stone-500">Au {editingJourId ? "" : "(optionnel)"}</span>
-            <input type="date" disabled={!!editingJourId} value={form.dateFin} onChange={e => setForm({ ...form, dateFin: e.target.value })} className="font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1 disabled:opacity-50" />
-          </label>
-          <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-stone-300 rounded-lg px-3 py-2 text-sm">
-            <option value="RTT">RTT</option><option value="CP">CP</option>
-          </select>
+          {editingJourId && (
+            <label className="block col-span-2">
+              <span className="text-xs text-stone-500">Date</span>
+              <input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" />
+            </label>
+          )}
+
+          {!editingJourId && modeSelection === "jours" && (
+            <div className="col-span-2">
+              <div className="flex gap-2 mb-2">
+                <input type="date" value={dateAAjouter} onChange={e => setDateAAjouter(e.target.value)} className="font-mono flex-1 border border-stone-300 rounded-lg px-3 py-2 text-sm" />
+                <button type="button" onClick={ajouterDateChoisie} className="px-4 rounded-lg text-sm text-white" style={{ backgroundColor: COLORS.ink }}>+</button>
+              </div>
+              {joursChoisis.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-1">
+                  {joursChoisis.map(function(d) {
+                    return (
+                      <span key={d} className="text-xs font-mono rounded-full px-2 py-1 flex items-center gap-1" style={{ backgroundColor: COLORS.stripe }}>
+                        {formatDateFR(d)}
+                        <button type="button" onClick={() => retirerDateChoisie(d)} style={{ color: COLORS.loss }}>×</button>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {!editingJourId && modeSelection === "semaine" && (
+            <label className="block col-span-2">
+              <span className="text-xs text-stone-500">N'importe quel jour de la semaine visée</span>
+              <input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" />
+            </label>
+          )}
+
+          {!editingJourId && modeSelection === "periode" && (
+            <>
+              <label className="block">
+                <span className="text-xs text-stone-500">Du</span>
+                <input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" />
+              </label>
+              <label className="block">
+                <span className="text-xs text-stone-500">Au</span>
+                <input type="date" value={form.dateFin} onChange={e => setForm({ ...form, dateFin: e.target.value })} className="font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" />
+              </label>
+            </>
+          )}
+
           <select value={form.duree} onChange={e => setForm({ ...form, duree: e.target.value })} className="border border-stone-300 rounded-lg px-3 py-2 text-sm">
             <option value="1">Journée entière</option><option value="0.5">Demi-journée</option>
           </select>
-          <input type="text" placeholder="Note (optionnel)" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} className="col-span-2 border border-stone-300 rounded-lg px-3 py-2 text-sm" />
-          {!editingJourId && joursPlage.length > 1 && <p className="col-span-2 text-xs text-stone-400">{joursPlage.length} jour(s) ouvré(s) seront ajoutés.</p>}
+          <input type="text" placeholder="Note (optionnel)" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} className="border border-stone-300 rounded-lg px-3 py-2 text-sm" />
+
+          {joursPlage.length > 0 && (
+            <div className="col-span-2 rounded-lg p-3 text-xs" style={{ backgroundColor: COLORS.stripe }}>
+              <p>{joursPlage.length} jour(s) × {form.duree === "0.5" ? "1/2" : "1"} = <span className="font-mono font-semibold">{formatJours(dureeTotale)} j</span> déduit(s)</p>
+              <p className="mt-1">Nouveau solde {form.type} : <span className="font-mono font-semibold" style={{ color: soldeNegatif ? COLORS.loss : COLORS.gain }}>{formatJours(soldeApres)} j</span></p>
+              <p className="mt-1 text-stone-500">Impact TR estimé : −{joursPlage.length} jour(s) travaillé(s) sur le(s) mois concerné(s)</p>
+            </div>
+          )}
+
           {blackoutsPlage.length > 0 && <Warning>{blackoutsPlage.length > 1 ? blackoutsPlage.length + " jours tombent" : "Cette date tombe"} dans une période bloquée{blackoutsPlage[0].label ? " : " + blackoutsPlage[0].label : ""}</Warning>}
           {tropConsecutifs && <Warning>Dépasse {maxRtt} RTT consécutifs</Warning>}
+          {chevauchements.length > 0 && <Warning>Chevauchement : {chevauchements.length > 1 ? chevauchements.length + " dates ont" : "cette date a"} déjà une absence saisie — bloqué</Warning>}
+          {soldeNegatif && <Warning>Solde {form.type} insuffisant ({formatJours(soldeActuelType)} j disponibles) — bloqué</Warning>}
+
           <div className="col-span-2 flex gap-2">
-            <button type="submit" className="flex-1 text-white rounded-lg py-2 text-sm font-medium" style={{ backgroundColor: COLORS.ink }}>{editingJourId ? "Enregistrer" : "Ajouter"}</button>
+            <button type="submit" disabled={blocageSubmit || (!editingJourId && joursPlage.length === 0)} className="flex-1 text-white rounded-lg py-2 text-sm font-medium disabled:opacity-40" style={{ backgroundColor: COLORS.ink }}>{editingJourId ? "Enregistrer" : "Ajouter"}</button>
             {editingJourId && <button type="button" onClick={annulerEditionJour} className="px-4 rounded-lg text-sm" style={{ backgroundColor: COLORS.stripe, color: COLORS.ink }}>Annuler</button>}
           </div>
         </form>
