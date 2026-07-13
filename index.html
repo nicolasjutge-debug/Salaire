@@ -4,6 +4,11 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Suivi Salaire, RTT & Congés</title>
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1F2B27">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -56,6 +61,7 @@
   .bg-white{background-color:#fff}.text-white{color:#fff}
   .fixed{position:fixed}.bottom-0{bottom:0}.left-0{left:0}.right-0{right:0}.top-4{top:1rem}
   .shadow-lg{box-shadow:0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -4px rgba(0,0,0,.1)}
+  .list-none{list-style:none;margin:0;padding:0}
   .focus\:outline-none:focus{outline:none}
   .focus\:ring-2:focus,.focus\:ring-stone-400:focus{box-shadow:0 0 0 2px #a8a29e}
   .disabled\:opacity-40:disabled{opacity:.4}.disabled\:opacity-50:disabled{opacity:.5}
@@ -86,6 +92,8 @@ const DEFAULT_STATE = {
     rttBaseAnnuel: 26, cpBaseAnnuel: 27, cpCycleDebut: "06-01", maxRttConsecutifs: 5,
     primeVacancesPct: 50, moisPrimeVacances: 5, primeNoelPct: 100, moisPrimeNoel: 11,
     ticketNombreMois: 17, ticketValeur: 12, ticketPartSalarialePct: 40,
+    tauxPrimeExperience: 1.5, valorisationConventionPct: 9, valorisationConventionDate: "2025-08-01",
+    ratioBrutSurBase: 1.085, ratioNetSurBrut: 0.723,
   },
   personnes: [
     { id: "nicolas", nom: "Nicolas", dateEntree: "2019-07-01", entreesMensuelles: {
@@ -100,6 +108,7 @@ const DEFAULT_STATE = {
   ],
   joursPris: [],
   periodesBloquees: [],
+  archives: [],
 };
 
 function uid() { return Math.random().toString(36).slice(2, 10); }
@@ -161,6 +170,144 @@ function joursDansPlage(dateDebut, dateFin, excludeWeekends) {
   }
   return result;
 }
+function joursOuvresDansMois(annee, mois) {
+  const debut = new Date(annee, mois-1, 1);
+  const fin = new Date(annee, mois, 0);
+  let count = 0;
+  let d = new Date(debut);
+  while (d <= fin) {
+    const js = d.getDay();
+    if (js !== 0 && js !== 6) count++;
+    d = new Date(d.getFullYear(), d.getMonth(), d.getDate()+1);
+  }
+  return count;
+}
+
+function calculRTTMensuel(annee, joursPris, base, dateEntreeStr) {
+  const dateEntree = dateEntreeStr ? parseISO(dateEntreeStr) : null;
+  const lignes = [];
+  let cumule = 0;
+  for (let m = 1; m <= 12; m++) {
+    const key = annee + "-" + String(m).padStart(2, "0");
+    const debutMois = new Date(annee, m-1, 1);
+    const finMois = new Date(annee, m, 0);
+    let acquisMois = Number(base) / 12;
+    if (dateEntree && dateEntree > finMois) {
+      acquisMois = 0;
+    } else if (dateEntree && dateEntree > debutMois && dateEntree <= finMois) {
+      const joursDansLeMois = finMois.getDate();
+      const joursRestants = joursDansLeMois - dateEntree.getDate() + 1;
+      acquisMois = (Number(base)/12) * (joursRestants / joursDansLeMois);
+    }
+    acquisMois = round2(acquisMois);
+    const prisMois = joursPris.filter(function(j) { return j.date.slice(0,7) === key && j.type === "RTT"; }).reduce(function(s,j) { return s + Number(j.duree); }, 0);
+    const soldeMois = round2(acquisMois - prisMois);
+    cumule = round2(cumule + soldeMois);
+    lignes.push({ mois: m, acquis: acquisMois, pris: prisMois, soldeMois: soldeMois, soldeCumule: cumule });
+  }
+  return lignes;
+}
+
+function estimerAnnee(personne, annee, joursPris, config) {
+  const src = personne.entreesMensuelles || {};
+  const connues = Object.keys(src).filter(function(k) { return src[k] && src[k].salaire; }).sort();
+  let dernierConnu = null;
+  connues.forEach(function(k) { if (k <= annee + "-12") dernierConnu = Number(src[k].salaire); });
+  if (dernierConnu == null && connues.length) dernierConnu = Number(src[connues[0]].salaire);
+
+  const dateValorisation = config.valorisationConventionDate || "2025-08-01";
+  const moisDetail = [];
+  let totalSalaire = 0, totalPrime = 0, totalTR = 0, totalTickets = 0, totalRTT = 0, totalCP = 0, totalBrut = 0, totalNet = 0;
+
+  for (let m = 1; m <= 12; m++) {
+    const key = annee + "-" + String(m).padStart(2, "0");
+    const reel = src[key];
+    const estimeSalaire = !(reel && reel.salaire);
+    const apresValorisation = key >= dateValorisation.slice(0,7);
+    let salaireBase = estimeSalaire ? dernierConnu : Number(reel.salaire);
+    let valorisationAppliquee = false;
+    if (estimeSalaire && apresValorisation && salaireBase != null) {
+      salaireBase = round2(salaireBase * (1 + Number(config.valorisationConventionPct||0)/100));
+      valorisationAppliquee = true;
+    }
+    salaireBase = salaireBase || 0;
+    const primeExperience = round2(salaireBase * Number(config.tauxPrimeExperience||0) / 100);
+    const brutEstime = round2(salaireBase * Number(config.ratioBrutSurBase||1));
+    const netEstime = round2(brutEstime * Number(config.ratioNetSurBrut||1));
+
+    const joursOuvres = joursOuvresDansMois(annee, m);
+    const rttPrisMois = joursPris.filter(function(j){ return j.date.slice(0,7)===key && j.type==="RTT"; }).reduce(function(s,j){return s+Number(j.duree);},0);
+    const cpPrisMois = joursPris.filter(function(j){ return j.date.slice(0,7)===key && j.type==="CP"; }).reduce(function(s,j){return s+Number(j.duree);},0);
+    const joursTravailles = Math.max(0, joursOuvres - rttPrisMois - cpPrisMois);
+    const valeurTR = round2(joursTravailles * (Number(config.ticketValeur)||0) * (Number(config.ticketPartSalarialePct)||0) / 100);
+    const totalMois = round2(salaireBase + primeExperience);
+
+    moisDetail.push({
+      mois: m, key: key, estimeSalaire: estimeSalaire, apresValorisation: apresValorisation, valorisationAppliquee: valorisationAppliquee,
+      salaireBase: salaireBase, primeExperience: primeExperience, brutEstime: brutEstime, netEstime: netEstime,
+      joursOuvres: joursOuvres, rttPris: rttPrisMois, cpPris: cpPrisMois, joursTravailles: joursTravailles,
+      ticketsEstimes: joursTravailles, valeurTR: valeurTR, totalMois: totalMois,
+    });
+    totalSalaire += salaireBase; totalPrime += primeExperience; totalTR += valeurTR; totalTickets += joursTravailles;
+    totalRTT += rttPrisMois; totalCP += cpPrisMois; totalBrut += brutEstime; totalNet += netEstime;
+  }
+
+  return {
+    annee: annee, moisDetail: moisDetail,
+    totalSalaire: round2(totalSalaire), totalPrime: round2(totalPrime), totalTR: round2(totalTR),
+    totalTickets: totalTickets, totalRTT: totalRTT, totalCP: totalCP,
+    totalBrut: round2(totalBrut), totalNet: round2(totalNet),
+    totalGeneral: round2(totalSalaire + totalPrime),
+    dernierConnu: dernierConnu,
+    nbMoisEstimes: moisDetail.filter(function(m){return m.estimeSalaire;}).length,
+    parametres: {
+      tauxPrimeExperience: Number(config.tauxPrimeExperience)||0,
+      valorisationConventionPct: Number(config.valorisationConventionPct)||0,
+      valorisationConventionDate: dateValorisation,
+      ticketValeur: Number(config.ticketValeur)||0,
+      ticketPartSalarialePct: Number(config.ticketPartSalarialePct)||0,
+    },
+  };
+}
+
+function archiverAnnee(estimation) {
+  let texte = "ARCHIVE " + estimation.annee + " — Estimation salariale annuelle — Nicolas Jutge\n";
+  texte += "Générée le " + formatDateFR(toLocalISODate(new Date())) + "\n";
+  texte += "========================================================\n\n";
+  texte += "HYPOTHESES ET PARAMETRES\n";
+  texte += "- Salaire de base pour les mois non renseignés : dernière valeur connue (" + formatEUR(estimation.dernierConnu||0) + ")\n";
+  texte += "- Taux prime d'expérience : " + estimation.parametres.tauxPrimeExperience + " %\n";
+  texte += "- Valorisation base conventionnelle : +" + estimation.parametres.valorisationConventionPct + " % à compter de " + formatDateFR(estimation.parametres.valorisationConventionDate) + " (mois estimés uniquement)\n";
+  texte += "- Titre-restaurant : 1 par jour ouvré réellement travaillé (jours ouvrés - RTT pris - CP pris), valeur " + formatEUR(estimation.parametres.ticketValeur) + ", part salariale " + estimation.parametres.ticketPartSalarialePct + " %\n\n";
+  texte += "DETAIL MENSUEL\n";
+  texte += "Mois          Salaire      Prime exp.   Jours trav.  TR (valeur)   Total mois\n";
+  estimation.moisDetail.forEach(function(m) {
+    const nomMois = MOIS_FR[m.mois-1];
+    texte += nomMois.padEnd(14," ") + formatEUR(m.salaireBase).padEnd(13," ") + formatEUR(m.primeExperience).padEnd(13," ") + String(m.joursTravailles).padEnd(13," ") + formatEUR(m.valeurTR).padEnd(14," ") + formatEUR(m.totalMois) + (m.estimeSalaire ? "  (estimé)" : "") + "\n";
+  });
+  texte += "\n----------------------------------------\n";
+  texte += "Total salaire annuel : " + formatEUR(estimation.totalSalaire) + "\n";
+  texte += "Total prime d'expérience : " + formatEUR(estimation.totalPrime) + "\n";
+  texte += "Total général (salaire + prime) : " + formatEUR(estimation.totalGeneral) + "\n";
+  texte += "Total titres-restaurant : " + formatEUR(estimation.totalTR) + " (" + estimation.totalTickets + " jours travaillés)\n";
+  texte += "Brut annuel estimé : " + formatEUR(estimation.totalBrut) + " — Net estimé : " + formatEUR(estimation.totalNet) + "\n";
+  texte += "Prime de vacances : " + (estimation.primeVacances != null ? formatEUR(estimation.primeVacances) : "à renseigner") + " — Prime de Noël : " + (estimation.primeNoel != null ? formatEUR(estimation.primeNoel) : "à renseigner") + "\n";
+  texte += "Total RTT pris : " + estimation.totalRTT + " j — Total CP pris : " + estimation.totalCP + " j\n";
+  texte += "Mois estimés (données manquantes) : " + estimation.nbMoisEstimes + " / 12\n";
+  if (estimation.rttMensuel) {
+    texte += "\nRTT MENSUEL\nMois          Acquis   Pris     Solde    Cumulé\n";
+    estimation.rttMensuel.forEach(function(l) {
+      texte += MOIS_FR[l.mois-1].padEnd(14," ") + String(l.acquis).padEnd(9," ") + String(l.pris).padEnd(9," ") + String(l.soldeMois).padEnd(9," ") + String(l.soldeCumule) + "\n";
+    });
+  }
+  const blob = new Blob([texte], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "archive-" + estimation.annee + "-nicolas.txt";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 function envoyerPeriodesParMail(periodes) {
   const sujet = encodeURIComponent("Périodes sans RTT/CP possible");
   const lignes = periodes.map(function(p) {
@@ -477,6 +624,15 @@ function App() {
   function supprimerPersonne(id) { if (id === "nicolas") return; updatePersonnes(state.personnes.filter(p => p.id !== id)); }
   function updatePersonneChamp(id, patch) { updatePersonnes(state.personnes.map(p => p.id === id ? { ...p, ...patch } : p)); }
 
+  function ajouterArchive(estimation) {
+    const sansAncienne = state.archives.filter(function(a) { return a.annee !== estimation.annee; });
+    const next = [...sansAncienne, { annee: estimation.annee, dateArchivage: toLocalISODate(new Date()), estimation: estimation }].sort((a,b) => b.annee - a.annee);
+    persist({ ...state, archives: next });
+  }
+  function supprimerArchive(annee) {
+    persist({ ...state, archives: state.archives.filter(function(a) { return a.annee !== annee; }) });
+  }
+
   function reinitialiser() {
     if (!confirmReset) { setConfirmReset(true); setTimeout(() => setConfirmReset(false), 3000); return; }
     setConfirmReset(false);
@@ -530,6 +686,7 @@ function App() {
   const tabs = [
     { id: "dashboard", label: "Accueil" },
     { id: "salaires", label: "Salaires" },
+    { id: "estimation", label: "Estimation" },
     { id: "primes", label: "Primes" },
     { id: "conges", label: "RTT & CP" },
   ];
@@ -571,6 +728,10 @@ function App() {
       <main className="px-4 pt-5 max-w-xl mx-auto">
         {tab === "dashboard" && <Dashboard dernierSalaire={dernierSalaire} soldeRTT={soldeRTT} soldeCP={soldeCP} prochaines={prochaines} today={today} />}
         {tab === "salaires" && <SalairesTab personnes={state.personnes} updatePersonnes={updatePersonnes} config={state.config} updateConfig={updateConfig} />}
+        {tab === "estimation" && (
+          <EstimationTab nicolas={nicolas} joursPris={state.joursPris || []} config={state.config} updateConfig={updateConfig}
+            archives={state.archives || []} ajouterArchive={ajouterArchive} supprimerArchive={supprimerArchive} anneeActuelle={anneeActuelle} primeMontant={primeMontant} />
+        )}
         {tab === "primes" && <PrimesTab config={state.config} updateConfig={updateConfig} anneeActuelle={anneeActuelle} primeMontant={primeMontant} />}
         {tab === "conges" && (
           <CongesTab
@@ -584,7 +745,7 @@ function App() {
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-stone-200">
-        <div className="max-w-xl mx-auto grid grid-cols-4">
+        <div className="max-w-xl mx-auto grid grid-cols-5">
           {tabs.map(function(t) {
             return (<button key={t.id} onClick={() => setTab(t.id)} className="py-3 text-xs font-medium" style={{ color: tab === t.id ? COLORS.ink : "#A8A29E" }}>{t.label}</button>);
           })}
@@ -665,7 +826,7 @@ function SalairesTab({ personnes, updatePersonnes, config, updateConfig }) {
         {personnes.map(function(p) {
           return (<button key={p.id} onClick={() => setPersonneId(p.id)} className="px-3 py-1.5 rounded-full text-sm whitespace-nowrap"
             style={{ backgroundColor: personneId === p.id ? COLORS.ink : COLORS.stripe, color: personneId === p.id ? "#fff" : COLORS.ink }}>
-            {p.nom || "(sans nom)"}
+            {p.nom || "(sans nom)"}{p.id === "nicolas" ? " 👤" : ""}
           </button>);
         })}
       </div>
@@ -677,7 +838,7 @@ function SalairesTab({ personnes, updatePersonnes, config, updateConfig }) {
           <button onClick={() => setAnnee(annee+1)} className="px-3 py-1 text-sm rounded-lg" style={{ backgroundColor: COLORS.stripe }}>▶</button>
         </div>
         <div className="grid grid-cols-4 gap-1 text-xs text-stone-500 mb-1 px-1">
-          <span>Mois</span><span>Salaire</span><span>Net fiscal</span><span>PS</span>
+          <span>Mois</span><span>💰 Salaire</span><span>🧾 Net fiscal</span><span>📉 PAS</span>
         </div>
         <div className="space-y-1">
           {MOIS_FR.map(function(m, i) {
@@ -766,7 +927,7 @@ function PrimesTab({ config, updateConfig, anneeActuelle, primeMontant }) {
   return (
     <div className="space-y-4">
       <Card>
-        <p className="text-sm font-medium mb-1">Prime de vacances</p>
+        <p className="text-sm font-medium mb-1">🎁 Prime de vacances</p>
         <p className="text-xs text-stone-400 mb-3">Versée en {MOIS_FR[config.moisPrimeVacances-1]}, calculée sur le salaire de Nicolas ce mois-là</p>
         <div className="grid grid-cols-2 gap-3">
           <PrimeBox label="Cette année" montant={primeMontant(config.primeVacancesPct, config.moisPrimeVacances, anneeActuelle)} />
@@ -783,7 +944,7 @@ function PrimesTab({ config, updateConfig, anneeActuelle, primeMontant }) {
         </div>
       </Card>
       <Card>
-        <p className="text-sm font-medium mb-1">Prime de Noël</p>
+        <p className="text-sm font-medium mb-1">🎁 Prime de Noël</p>
         <p className="text-xs text-stone-400 mb-3">Versée en {MOIS_FR[config.moisPrimeNoel-1]}, calculée sur le salaire de Nicolas ce mois-là</p>
         <div className="grid grid-cols-2 gap-3">
           <PrimeBox label="Cette année" montant={primeMontant(config.primeNoelPct, config.moisPrimeNoel, anneeActuelle)} />
@@ -804,11 +965,203 @@ function PrimesTab({ config, updateConfig, anneeActuelle, primeMontant }) {
   );
 }
 
+function EstimationTab({ nicolas, joursPris, config, updateConfig, archives, ajouterArchive, supprimerArchive, anneeActuelle, primeMontant }) {
+  const [annee, setAnnee] = useState(anneeActuelle);
+  const [detailOuvert, setDetailOuvert] = useState(false);
+  const [erreurCalcul, setErreurCalcul] = useState(null);
+
+  let estimation = null;
+  try {
+    const estimationBase = estimerAnnee(nicolas, annee, joursPris, config);
+    const rttMensuelEstim = calculRTTMensuel(annee, joursPris, config.rttBaseAnnuel, nicolas ? nicolas.dateEntree : null);
+    const primeVacances = primeMontant(config.primeVacancesPct, config.moisPrimeVacances, annee);
+    const primeNoel = primeMontant(config.primeNoelPct, config.moisPrimeNoel, annee);
+    estimation = { ...estimationBase, rttMensuel: rttMensuelEstim, primeVacances: primeVacances, primeNoel: primeNoel };
+  } catch (e) {
+    if (erreurCalcul !== e.message) setErreurCalcul(e.message);
+  }
+
+  if (!estimation) {
+    return (
+      <Card>
+        <p className="text-sm font-medium mb-1" style={{ color: COLORS.loss }}>⚠️ Calcul d'estimation impossible</p>
+        <p className="text-xs text-stone-500">{erreurCalcul || "Erreur inconnue lors du calcul."}</p>
+      </Card>
+    );
+  }
+
+  const archiveExistante = archives.filter(function(a) { return a.annee === annee; })[0];
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <div className="flex items-center justify-between mb-1">
+          <button onClick={() => setAnnee(annee-1)} className="px-3 py-1 text-sm rounded-lg" style={{ backgroundColor: COLORS.stripe }}>◀</button>
+          <p className="font-display text-lg">Estimation {annee}</p>
+          <button onClick={() => setAnnee(annee+1)} className="px-3 py-1 text-sm rounded-lg" style={{ backgroundColor: COLORS.stripe }}>▶</button>
+        </div>
+        <p className="text-xs text-stone-400 text-center">{estimation.nbMoisEstimes} mois estimé(s) sur 12{archiveExistante ? " · archivée le " + formatDateFR(archiveExistante.dateArchivage) : ""}</p>
+      </Card>
+
+      <Card dark>
+        <p className="text-xs uppercase tracking-wide" style={{ color: "#8FA69B" }}>💰 Résumé exécutif — {annee}</p>
+        <p className="font-display font-mono text-3xl mt-1">{formatEUR(estimation.totalGeneral)}</p>
+        <p className="text-xs mt-1" style={{ color: "#8FA69B" }}>Salaire + prime d'expérience, sur 12 mois</p>
+        <div className="grid grid-cols-3 gap-2 mt-3 pt-3" style={{ borderTop: "1px solid #33443d" }}>
+          <div><p className="text-xs" style={{ color: "#8FA69B" }}>Salaire</p><p className="font-mono text-sm">{formatEUR(estimation.totalSalaire)}</p></div>
+          <div><p className="text-xs" style={{ color: "#8FA69B" }}>⭐ Prime exp.</p><p className="font-mono text-sm">{formatEUR(estimation.totalPrime)}</p></div>
+          <div><p className="text-xs" style={{ color: "#8FA69B" }}>🍽️ TR</p><p className="font-mono text-sm">{formatEUR(estimation.totalTR)}</p></div>
+        </div>
+        <div className="grid grid-cols-2 gap-2 mt-2 pt-2" style={{ borderTop: "1px solid #33443d" }}>
+          <div><p className="text-xs" style={{ color: "#8FA69B" }}>Brut annuel estimé</p><p className="font-mono text-sm">{formatEUR(estimation.totalBrut)}</p></div>
+          <div><p className="text-xs" style={{ color: "#8FA69B" }}>🧾 Net estimé</p><p className="font-mono text-sm">{formatEUR(estimation.totalNet)}</p></div>
+        </div>
+      </Card>
+
+      <Card>
+        <p className="text-sm font-medium mb-3">🎁 Primes de l'année</p>
+        <div className="grid grid-cols-3 gap-2">
+          <div className="rounded-lg p-3" style={{ backgroundColor: COLORS.stripe }}>
+            <p className="text-xs text-stone-500">⭐ Expérience</p>
+            <p className="font-mono text-sm font-semibold">{formatEUR(estimation.totalPrime)}</p>
+          </div>
+          <div className="rounded-lg p-3" style={{ backgroundColor: COLORS.stripe }}>
+            <p className="text-xs text-stone-500">Vacances</p>
+            <p className="font-mono text-sm font-semibold">{estimation.primeVacances != null ? formatEUR(estimation.primeVacances) : "à renseigner"}</p>
+          </div>
+          <div className="rounded-lg p-3" style={{ backgroundColor: COLORS.stripe }}>
+            <p className="text-xs text-stone-500">Noël</p>
+            <p className="font-mono text-sm font-semibold">{estimation.primeNoel != null ? formatEUR(estimation.primeNoel) : "à renseigner"}</p>
+          </div>
+        </div>
+        <p className="text-xs text-stone-400 mt-2">Détail et méthode de calcul dans l'onglet Primes.</p>
+      </Card>
+
+      <Card>
+        <p className="text-sm font-medium mb-3">Tableau récapitulatif</p>
+        <div className="grid grid-cols-5 gap-1 text-xs text-stone-500 mb-1 px-1">
+          <span>Mois</span><span>Salaire</span><span>Prime</span><span>TR</span><span>Total</span>
+        </div>
+        <div className="space-y-1">
+          {estimation.moisDetail.map(function(m, i) {
+            return (
+              <div key={m.mois} className="grid grid-cols-5 gap-1 items-center rounded-lg px-1 py-1.5" style={{ backgroundColor: i % 2 === 1 ? COLORS.stripe : "transparent" }}>
+                <span className="text-xs font-mono capitalize">{MOIS_FR[m.mois-1].slice(0,3)}{m.estimeSalaire ? "*" : ""}</span>
+                <span className="font-mono text-xs">{formatEUR(m.salaireBase)}</span>
+                <span className="font-mono text-xs">{formatEUR(m.primeExperience)}</span>
+                <span className="font-mono text-xs">{formatEUR(m.valeurTR)}</span>
+                <span className="font-mono text-xs font-semibold">{formatEUR(m.totalMois)}</span>
+              </div>
+            );
+          })}
+        </div>
+        <div className="grid grid-cols-5 gap-1 items-center mt-2 pt-2 border-t border-stone-200 px-1">
+          <span className="text-xs font-semibold">Total</span>
+          <span className="font-mono text-xs font-semibold">{formatEUR(estimation.totalSalaire)}</span>
+          <span className="font-mono text-xs font-semibold">{formatEUR(estimation.totalPrime)}</span>
+          <span className="font-mono text-xs font-semibold">{formatEUR(estimation.totalTR)}</span>
+          <span className="font-mono text-xs font-semibold">{formatEUR(estimation.totalGeneral)}</span>
+        </div>
+        {estimation.nbMoisEstimes > 0 && <p className="text-xs text-stone-400 mt-2">* mois estimé (donnée absente dans Salaires)</p>}
+      </Card>
+
+      <Card>
+        <button onClick={() => setDetailOuvert(!detailOuvert)} className="w-full flex items-center justify-between">
+          <p className="text-sm font-medium">Détail du calcul, mois par mois</p>
+          <span className="text-xs" style={{ color: COLORS.accent }}>{detailOuvert ? "masquer" : "afficher"}</span>
+        </button>
+        {detailOuvert && (
+          <div className="mt-3 space-y-3">
+            {estimation.moisDetail.map(function(m) {
+              return (
+                <div key={m.mois} className="text-xs border-t border-stone-100 pt-2">
+                  <p className="font-medium capitalize mb-1">{MOIS_FR[m.mois-1]} {annee}{m.estimeSalaire ? " (estimé)" : " (réel)"}</p>
+                  <p className="text-stone-500 font-mono">Salaire base : {formatEUR(m.salaireBase)}{m.valorisationAppliquee ? " (dont +" + config.valorisationConventionPct + "% valorisation)" : ""}</p>
+                  <p className="text-stone-500 font-mono">Prime d'expérience : {formatEUR(m.salaireBase)} × {config.tauxPrimeExperience}% = {formatEUR(m.primeExperience)}</p>
+                  <p className="text-stone-500 font-mono">Jours ouvrés : {m.joursOuvres} − RTT {m.rttPris} − CP {m.cpPris} = {m.joursTravailles} jours travaillés</p>
+                  <p className="text-stone-500 font-mono">TR : {m.joursTravailles} × {formatEUR(config.ticketValeur)} × {config.ticketPartSalarialePct}% = {formatEUR(m.valeurTR)}</p>
+                  <p className="font-medium mt-1">Total du mois : {formatEUR(m.totalMois)}</p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+
+      <Card>
+        <p className="text-sm font-medium mb-2">Hypothèses retenues</p>
+        <ul className="text-xs text-stone-500 space-y-1.5 list-none">
+          <li>• Pour les mois sans salaire renseigné, dernière valeur connue utilisée : {estimation.dernierConnu != null ? formatEUR(estimation.dernierConnu) : "aucune donnée disponible"}.</li>
+          <li>• Les mois estimés à partir de {formatDateFR(config.valorisationConventionDate)} incluent la valorisation conventionnelle de +{config.valorisationConventionPct}%.</li>
+          <li>• Les titres-restaurant supposent 1 titre par jour ouvré réellement travaillé (jours ouvrés du mois, moins RTT et CP posés).</li>
+          <li>• Les jours fériés ne sont pas déduits des jours ouvrés (seuls samedis/dimanches sont exclus) — le nombre de jours travaillés peut donc être légèrement surestimé les mois avec jour férié.</li>
+          <li>• Brut et net sont des estimations dérivées du salaire mensuel via des ratios observés sur tes bulletins réels (brut ≈ ×{config.ratioBrutSurBase}, net ≈ ×{config.ratioNetSurBrut} du brut) — ils n'intègrent pas d'éventuels éléments variables (heures sup, primes exceptionnelles).</li>
+        </ul>
+      </Card>
+
+      <Card>
+        <p className="text-sm font-medium mb-3">Formules utilisées</p>
+        <div className="text-xs text-stone-500 space-y-1.5 font-mono">
+          <p>Salaire mensuel = donnée réelle, ou dernière connue × (1+valorisation) si mois estimé après {formatDateFR(config.valorisationConventionDate)}</p>
+          <p>Prime d'expérience = Salaire mensuel × Taux prime ({config.tauxPrimeExperience}%)</p>
+          <p>Brut estimé = Salaire mensuel × {config.ratioBrutSurBase} (ratio observé sur bulletins réels)</p>
+          <p>Net estimé = Brut estimé × {config.ratioNetSurBrut} (ratio observé sur bulletins réels)</p>
+          <p>Jours travaillés = Jours ouvrés du mois − RTT pris − CP pris</p>
+          <p>Valeur TR = Jours travaillés × Valeur unitaire × Part salariale ({config.ticketPartSalarialePct}%)</p>
+          <p>Total mensuel = Salaire mensuel + Prime d'expérience</p>
+        </div>
+        <div className="grid grid-cols-2 gap-3 mt-3 pt-3 border-t border-stone-200">
+          <NumberField label="Taux prime d'expérience" value={config.tauxPrimeExperience} onChange={v => updateConfig({ tauxPrimeExperience: v })} suffix="%" />
+          <NumberField label="Valorisation convention" value={config.valorisationConventionPct} onChange={v => updateConfig({ valorisationConventionPct: v })} suffix="%" />
+          <NumberField label="Ratio brut / base" value={config.ratioBrutSurBase} onChange={v => updateConfig({ ratioBrutSurBase: v })} step="0.001" />
+          <NumberField label="Ratio net / brut" value={config.ratioNetSurBrut} onChange={v => updateConfig({ ratioNetSurBrut: v })} step="0.001" />
+          <div className="col-span-2">
+            <TextDateField label="Date d'effet de la valorisation" value={config.valorisationConventionDate} onChange={v => updateConfig({ valorisationConventionDate: v })} />
+          </div>
+        </div>
+      </Card>
+
+      <Card>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-medium">🗄️ Archives</p>
+          <button onClick={() => ajouterArchive(estimation)} className="text-xs flex items-center gap-1 rounded-full px-3 py-1.5" style={{ backgroundColor: COLORS.stripe }}>
+            {archiveExistante ? "Réarchiver " + annee : "Archiver " + annee}
+          </button>
+        </div>
+        <div className="space-y-1 mb-3">
+          {archives.length === 0 && <p className="text-sm text-stone-400">Aucune année archivée.</p>}
+          {archives.map(function(a, i) {
+            return (
+              <Row key={a.annee} index={i}>
+                <div>
+                  <p className="font-mono">{a.annee} — Total {formatEUR(a.estimation.totalGeneral)}</p>
+                  <p className="text-xs text-stone-400">Archivée le {formatDateFR(a.dateArchivage)} · taux prime {a.estimation.parametres.tauxPrimeExperience}%, valorisation +{a.estimation.parametres.valorisationConventionPct}%</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => archiverAnnee(a.estimation)}><DownloadIcon size={15} color={COLORS.accent} /></button>
+                  <button onClick={() => supprimerArchive(a.annee)}><TrashIcon color={COLORS.loss} /></button>
+                </div>
+              </Row>
+            );
+          })}
+        </div>
+        <p className="text-xs text-stone-400">Archiver conserve les paramètres (taux, valorisation) utilisés à ce moment, même si tu les modifies plus tard.</p>
+      </Card>
+    </div>
+  );
+}
+
 function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifierJour, supprimerJour, periodesBloquees, ajouterPeriode, modifierPeriode, supprimerPeriode, personnes, ajouterPersonne, supprimerPersonne, updatePersonne, conges, today }) {
   const [form, setForm] = useState({ date: "", dateFin: "", type: "RTT", duree: "1", note: "" });
   const [editingJourId, setEditingJourId] = useState(null);
   const [periodeForm, setPeriodeForm] = useState({ dateDebut: "", dateFin: "", label: "" });
   const [editingPeriodeId, setEditingPeriodeId] = useState(null);
+  const [anneeRTT, setAnneeRTT] = useState(today.getFullYear());
+
+  const nicolasP = personnes.filter(function(p) { return p.id === "nicolas"; })[0];
+  const rttMensuel = useMemo(function() {
+    return calculRTTMensuel(anneeRTT, joursPris, config.rttBaseAnnuel, nicolasP ? nicolasP.dateEntree : null);
+  }, [anneeRTT, joursPris, config.rttBaseAnnuel, nicolasP]);
 
   const maxRtt = Number(config.maxRttConsecutifs) || 5;
   const dateFinEffective = form.dateFin || form.date;
@@ -860,12 +1213,12 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifie
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <Card dark>
-          <p className="text-xs" style={{ color: "#8FA69B" }}>Solde RTT</p>
+          <p className="text-xs" style={{ color: "#8FA69B" }}>📆 Solde RTT</p>
           <p className="font-mono text-2xl mt-1">{formatJours(conges.soldeRTT)} j</p>
           <p className="text-xs mt-1" style={{ color: "#8FA69B" }}>{formatJours(conges.rttAcquis)} acquis − {formatJours(conges.rttPris)} pris</p>
         </Card>
         <Card dark>
-          <p className="text-xs" style={{ color: "#8FA69B" }}>Solde CP</p>
+          <p className="text-xs" style={{ color: "#8FA69B" }}>🏖️ Solde CP</p>
           <p className="font-mono text-2xl mt-1">{formatJours(conges.soldeCP)} j</p>
           <p className="text-xs mt-1" style={{ color: "#8FA69B" }}>{formatJours(conges.cpAcquisFixe)} acquis − {formatJours(conges.cpPris)} pris</p>
         </Card>
@@ -875,6 +1228,33 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifie
         <p className="text-xs text-stone-500">En cours d'acquisition (CP, cycle suivant)</p>
         <p className="font-mono text-lg font-semibold mt-1">{formatJours(conges.cpEnCours)} j</p>
         <p className="text-xs text-stone-400 mt-1">Cycle d'usage courant depuis le {formatDateFR(toLocalISODate(conges.debutCycleCP))} · RTT sur année civile depuis le 1er janvier</p>
+      </Card>
+
+      <Card>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-medium">📆 RTT — détail mensuel {anneeRTT}</p>
+          <div className="flex gap-1">
+            <button onClick={() => setAnneeRTT(anneeRTT-1)} className="px-2 py-1 text-xs rounded-lg" style={{ backgroundColor: COLORS.stripe }}>◀</button>
+            <button onClick={() => setAnneeRTT(anneeRTT+1)} className="px-2 py-1 text-xs rounded-lg" style={{ backgroundColor: COLORS.stripe }}>▶</button>
+          </div>
+        </div>
+        <div className="grid grid-cols-5 gap-1 text-xs text-stone-500 mb-1 px-1">
+          <span>Mois</span><span>Acquis</span><span>Pris</span><span>Solde</span><span>Cumulé</span>
+        </div>
+        <div className="space-y-1">
+          {rttMensuel.map(function(l, i) {
+            return (
+              <div key={l.mois} className="grid grid-cols-5 gap-1 items-center rounded-lg px-1 py-1" style={{ backgroundColor: i % 2 === 1 ? COLORS.stripe : "transparent" }}>
+                <span className="text-xs font-mono capitalize">{MOIS_FR[l.mois-1].slice(0,3)}</span>
+                <span className="font-mono text-xs">{formatJours(l.acquis)}</span>
+                <span className="font-mono text-xs">{formatJours(l.pris)}</span>
+                <span className="font-mono text-xs">{formatJours(l.soldeMois)}</span>
+                <span className="font-mono text-xs font-semibold">{formatJours(l.soldeCumule)}</span>
+              </div>
+            );
+          })}
+        </div>
+        <p className="text-xs text-stone-400 mt-2">Acquis proratisé sur le mois d'entrée si applicable. Base : {config.rttBaseAnnuel} j/an.</p>
       </Card>
 
       <Card>
@@ -1013,8 +1393,42 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifie
   );
 }
 
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null, info: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error: error };
+  }
+  componentDidCatch(error, info) {
+    this.setState({ info: info });
+    console.error("Erreur applicative :", error, info);
+  }
+  render() {
+    if (this.state.error) {
+      const err = this.state.error;
+      const info = this.state.info;
+      return (
+        <div style={{ minHeight: "100vh", backgroundColor: "#F7F8F4", padding: "20px", fontFamily: "ui-sans-serif, system-ui, sans-serif", color: "#1F2B27" }}>
+          <h2 style={{ margin: "0 0 8px 0" }}>Une erreur est survenue</h2>
+          <p style={{ color: "#78716C", fontSize: "14px" }}>Copie le texte ci-dessous pour signaler le problème précisément.</p>
+          <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", backgroundColor: "#fff", border: "1px solid #E7E5E4", padding: "12px", borderRadius: "8px", fontSize: "12px", overflow: "auto", color: "#9C4A3C" }}>
+            {String(err && err.message ? err.message : err)}
+            {"\n\n"}
+            {String(err && err.stack ? err.stack : "")}
+            {info && info.componentStack ? "\n\nComposant :\n" + info.componentStack : ""}
+          </pre>
+          <button onClick={() => window.location.reload()} style={{ marginTop: "12px", padding: "8px 16px", backgroundColor: "#1F2B27", color: "#fff", border: "none", borderRadius: "8px", cursor: "pointer" }}>Recharger</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const root = ReactDOM.createRoot(document.getElementById("root"));
-root.render(<App />);
+root.render(<ErrorBoundary><App /></ErrorBoundary>);
 </script>
 </body>
 </html>
