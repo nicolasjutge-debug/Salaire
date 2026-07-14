@@ -1,17 +1,394 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Suivi Salaire, RTT & Congés</title>
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1F2B27">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.0/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #F7F8F4; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  button { font-family: inherit; cursor: pointer; background: none; border: none; padding: 0; }
+  input, select { font-family: inherit; }
+  .font-display { font-family: 'Fraunces', Georgia, serif; }
+  .font-mono { font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
+  .font-sans { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }
+  .block { display: block; } .flex { display: flex; } .grid { display: grid; }
+  .flex-1 { flex: 1 1 0%; } .flex-col { flex-direction: column; }
+  .items-center { align-items: center; } .items-start { align-items: flex-start; } .items-end { align-items: flex-end; }
+  .justify-between { justify-content: space-between; } .justify-center { justify-content: center; }
+  .shrink-0 { flex-shrink: 0; } .whitespace-nowrap { white-space: nowrap; } .overflow-x-auto { overflow-x: auto; }
+  .grid-cols-2 { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .grid-cols-3 { grid-template-columns: repeat(3, minmax(0,1fr)); }
+  .grid-cols-4 { grid-template-columns: repeat(4, minmax(0,1fr)); }
+  .grid-cols-5 { grid-template-columns: repeat(5, minmax(0,1fr)); }
+  .col-span-2 { grid-column: span 2 / span 2; }
+  .gap-1 { gap: .25rem; } .gap-1\.5 { gap: .375rem; } .gap-2 { gap: .5rem; } .gap-3 { gap: .75rem; } .gap-y-1\.5 { row-gap: .375rem; }
+  .p-2{padding:.5rem}.p-3{padding:.75rem}.p-4{padding:1rem}.p-5{padding:1.25rem}
+  .px-1{padding-left:.25rem;padding-right:.25rem}.px-2{padding-left:.5rem;padding-right:.5rem}
+  .px-3{padding-left:.75rem;padding-right:.75rem}.px-4{padding-left:1rem;padding-right:1rem}.px-5{padding-left:1.25rem;padding-right:1.25rem}
+  .py-1{padding-top:.25rem;padding-bottom:.25rem}.py-1\.5{padding-top:.375rem;padding-bottom:.375rem}
+  .py-2{padding-top:.5rem;padding-bottom:.5rem}.py-2\.5{padding-top:.625rem;padding-bottom:.625rem}.py-3{padding-top:.75rem;padding-bottom:.75rem}
+  .pt-1{padding-top:.25rem}.pt-2{padding-top:.5rem}.pt-3{padding-top:.75rem}.pt-5{padding-top:1.25rem}.pt-6{padding-top:1.5rem}
+  .pb-1{padding-bottom:.25rem}.pb-4{padding-bottom:1rem}.pb-5{padding-bottom:1.25rem}.pb-24{padding-bottom:6rem}
+  .mt-1{margin-top:.25rem}.mt-2{margin-top:.5rem}.mt-3{margin-top:.75rem}.mt-4{margin-top:1rem}
+  .mb-1{margin-bottom:.25rem}.mb-2{margin-bottom:.5rem}.mb-3{margin-bottom:.75rem}.mb-4{margin-bottom:1rem}
+  .mx-auto{margin-left:auto;margin-right:auto}
+  .space-y-1>*+*{margin-top:.25rem}.space-y-3>*+*{margin-top:.75rem}.space-y-4>*+*{margin-top:1rem}
+  .w-full{width:100%}.min-h-screen{min-height:100vh}.max-w-xl{max-width:36rem}.max-w-sm{max-width:24rem}
+  .text-xs{font-size:.75rem;line-height:1rem}.text-sm{font-size:.875rem;line-height:1.25rem}
+  .text-lg{font-size:1.125rem;line-height:1.75rem}.text-xl{font-size:1.25rem;line-height:1.75rem}
+  .text-2xl{font-size:1.5rem;line-height:2rem}.text-3xl{font-size:1.875rem;line-height:2.25rem}
+  .font-medium{font-weight:500}.font-semibold{font-weight:600}
+  .uppercase{text-transform:uppercase}.capitalize{text-transform:capitalize}
+  .tracking-widest{letter-spacing:.1em}.tracking-wide{letter-spacing:.025em}.text-right{text-align:right}
+  .rounded{border-radius:.25rem}.rounded-lg{border-radius:.5rem}.rounded-xl{border-radius:.75rem}
+  .rounded-2xl{border-radius:1rem}.rounded-full{border-radius:9999px}
+  .border{border:1px solid #e7e5e4}.border-t{border-top:1px solid #e7e5e4}.border-transparent{border-color:transparent}
+  .border-stone-100{border-color:#f5f5f4}.border-stone-200{border-color:#e7e5e4}.border-stone-300{border-color:#d6d3d1}
+  .text-stone-400{color:#a8a29e}.text-stone-500{color:#78716c}.text-stone-800{color:#292524}
+  .bg-white{background-color:#fff}.text-white{color:#fff}
+  .fixed{position:fixed}.bottom-0{bottom:0}.left-0{left:0}.right-0{right:0}.top-4{top:1rem}
+  .shadow-lg{box-shadow:0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -4px rgba(0,0,0,.1)}
+  .list-none{list-style:none;margin:0;padding:0}
+  .focus\:outline-none:focus{outline:none}
+  .focus\:ring-2:focus,.focus\:ring-stone-400:focus{box-shadow:0 0 0 2px #a8a29e}
+  .disabled\:opacity-40:disabled{opacity:.4}.disabled\:opacity-50:disabled{opacity:.5}
+  button:disabled,input:disabled,select:disabled{cursor:not-allowed}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useMemo } = React;
+
+const COLORS = {
+  paper: "#F7F8F4", stripe: "#E6ECE1", ink: "#1F2B27",
+  accent: "#35506B", gain: "#4B7A5E", loss: "#9C4A3C", gold: "#96793C", warnBg: "#F3E3DE",
+};
+
+const MOIS_FR = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
+
+const HISTORIQUE = [
+  { periode: "Juillet 2025", paiement: "2025-07-31", salaireRef: 2261.76, netPaye: 1779.56, netFiscal: 2109.67, pas: 40.08, primeExp: 31.34, tr: 16, cpAcquis: 27, cpPris: 9, cpSolde: 18 },
+  { periode: "Août 2025", paiement: "2025-08-31", salaireRef: 2261.76, netPaye: 1772.29, netFiscal: 2101.80, pas: 39.93, primeExp: 31.34, tr: 17, cpAcquis: 27, cpPris: 13, cpSolde: 14 },
+  { periode: "Février 2026", paiement: "2026-02-28", salaireRef: 2284.48, netPaye: 1776.06, netFiscal: 2123.73, pas: 46.72, primeExp: 188.03, tr: 18, cpAcquis: 27, cpPris: 12, cpSolde: 15 },
+  { periode: "Novembre 2025", paiement: "2025-11-30", salaireRef: 2261.76, netPaye: 3522.18, netFiscal: 3976.30, pas: 75.55, primeExp: 31.34, tr: 14, cpAcquis: 27, cpPris: 24, cpSolde: 3, note: "Prime 13e mois / Noël : 2 250 €" },
+  { periode: "Mai 2026", paiement: "2026-05-31", salaireRef: 2284.48, netPaye: 2677.83, netFiscal: 3087.42, pas: 67.92, primeExp: 188.03, tr: 20, cpAcquis: 25, cpPris: 10, cpSolde: 15, note: "Demi-prime 13e mois / vacances" },
+];
+
+const DEFAULT_STATE = {
+  config: {
+    rttBaseAnnuel: 26, cpBaseAnnuel: 27, cpCycleDebut: "01-01", maxRttConsecutifs: 5,
+    primeVacancesPct: 50, moisPrimeVacances: 5, primeNoelPct: 100, moisPrimeNoel: 11,
+    ticketNombreMois: 17, ticketValeur: 12, ticketPartSalarialePct: 40,
+    valorisationConventionDate: "2025-08-01",
+    baseConventionnelleClasse3: 2089.17, valorisationTauxDepart: 9, valorisationIncrementAnnuel: 1.5, valorisationPlafond: 15,
+    ratioBrutSurBase: 1.085, ratioNetSurBrut: 0.723, ratioNetFiscalSurBrut: 0.858,
+    mutuelleConjointMensuel: 48.08,
+    tauxPAS: 1.9,
+    abonnementTransportMensuel: 56, remboursementTransportPct: 50,
+    primeExpTaux2026: 10.5, primeExpDate2026: "2026-08-01",
+  },
+  personnes: [
+    { id: "nicolas", nom: "Nicolas", dateEntree: "2019-07-01", entreesMensuelles: {
+      "2025-07": { salaire: 2261.76, netFiscal: 2109.67, ps: 40.08, netPaye: 1779.56, primeExp: 31.34, tr: 16 },
+      "2025-08": { salaire: 2261.76, netFiscal: 2101.80, ps: 39.93, netPaye: 1772.29, primeExp: 31.34, tr: 17 },
+      "2026-02": { salaire: 2284.48, netFiscal: 2123.73, ps: 46.72, netPaye: 1776.06, primeExp: 188.03, tr: 18 },
+      "2025-11": { salaire: 2261.76, netFiscal: 3976.30, ps: 75.55, netPaye: 3522.18, primeExp: 31.34, tr: 14, primeNoel: 2250 },
+      "2026-05": { salaire: 2284.48, netFiscal: 3087.42, ps: 67.92, netPaye: 2677.83, primeExp: 188.03, tr: 20, primeVacances: 1142.24 },
+    }},
+    { id: "sarah", nom: "Sarah", dateEntree: "", entreesMensuelles: {} },
+    { id: "simon", nom: "Simon", dateEntree: "", entreesMensuelles: {} },
+    { id: "nelly", nom: "Nelly", dateEntree: "", entreesMensuelles: {} },
+  ],
+  joursPris: [],
+  periodesBloquees: [],
+  archives: [],
+};
+
+function uid() { return Math.random().toString(36).slice(2, 10); }
+function round2(n) { return Math.round(Number(n) * 100) / 100; }
+function parseISO(s) { return new Date(s + "T00:00:00"); }
+function toLocalISODate(d) { return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0"); }
+function formatEUR(n) { return (Number(n) || 0).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €"; }
+function formatJours(n) { return round2(n || 0).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function formatDateFR(s) { if (!s) return "-"; return parseISO(s).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" }); }
+function formatMoisAnnee(key) { const parts = key.split("-"); return MOIS_FR[Number(parts[1])-1] + " " + parts[0]; }
+
 function primeExperienceMensuelle(annee, mois, config) {
   const base = Number(config.baseConventionnelleClasse3) || 2089.17;
   const key = annee + "-" + String(mois).padStart(2, "0");
-  const dateValorisation = config.valorisationConventionDate || "2025-08-01";
-  const dateHausse2026 = "2026-08-01";
+  const dateHausse2026 = config.primeExpDate2026 || "2026-08-01";
   
-  let taux;
-  if (key < dateValorisation.slice(0, 7)) {
-    taux = Number(config.valorisationTauxDepart) || 9;
-  } else if (key < dateHausse2026.slice(0, 7)) {
-    taux = Number(config.valorisationTauxDepart) || 9;
-  } else {
-    taux = 10.5;
+  let taux = Number(config.valorisationTauxDepart) || 9;
+  if (key >= dateHausse2026.slice(0, 7)) {
+    taux = Number(config.primeExpTaux2026) || 10.5;
   }
   
   return { base: base, taux: taux, montant: round2(base * taux / 100) };
 }
+
+function estimerAnnee(personne, annee, joursPris, config) {
+  const src = personne.entreesMensuelles || {};
+  const moisDetail = [];
+  let totalSalaire = 0, totalPrime = 0, totalPrimeNoel = 0, totalPrimeVacances = 0, totalTR = 0, totalTickets = 0;
+  let totalRTT = 0, totalCP = 0, totalBrut = 0, totalNet = 0, totalNetFiscal = 0, totalPAS = 0, totalTransport = 0;
+  
+  for (let m = 1; m <= 12; m++) {
+    const key = annee + "-" + String(m).padStart(2, "0");
+    const reel = src[key];
+    
+    let salaireBase = (reel && reel.salaire) ? Number(reel.salaire) : null;
+    
+    if (!salaireBase) {
+      const connues = Object.keys(src).filter(k => src[k] && src[k].salaire).sort();
+      let dernierConnu = null;
+      connues.forEach(k => { if (k <= key) dernierConnu = Number(src[k].salaire); });
+      salaireBase = dernierConnu || 2261.76;
+    }
+    
+    salaireBase = salaireBase || 0;
+    
+    const primeExp = primeExperienceMensuelle(annee, m, config);
+    const brutEstime = round2(salaireBase * Number(config.ratioBrutSurBase || 1));
+    const netFiscalEstime = round2(brutEstime * Number(config.ratioNetFiscalSurBrut || 1));
+    const pasEstime = round2(netFiscalEstime * Number(config.tauxPAS || 0) / 100);
+    const mutuelleConjoint = Number(config.mutuelleConjointMensuel) || 0;
+    const netEstime = round2(brutEstime * Number(config.ratioNetSurBrut || 1) - mutuelleConjoint);
+    const primeTransport = round2(Number(config.abonnementTransportMensuel || 0) * Number(config.remboursementTransportPct || 0) / 100);
+    
+    const joursOuvres = 22;
+    const rttPrisMois = joursPris.filter(j => j.date.slice(0, 7) === key && j.type === "RTT").reduce((s, j) => s + Number(j.duree), 0);
+    const cpPrisMois = joursPris.filter(j => j.date.slice(0, 7) === key && j.type === "CP").reduce((s, j) => s + Number(j.duree), 0);
+    const joursTravailles = Math.max(0, joursOuvres - rttPrisMois - cpPrisMois);
+    const valeurTR = round2(joursTravailles * (Number(config.ticketValeur) || 0) * (Number(config.ticketPartSalarialePct) || 0) / 100);
+    
+    let primeNoel = 0;
+    if (m === Number(config.moisPrimeNoel)) {
+      primeNoel = round2(salaireBase * Number(config.primeNoelPct || 0) / 100);
+    }
+    
+    let primeVacances = 0;
+    if (m === Number(config.moisPrimeVacances)) {
+      primeVacances = round2(salaireBase * Number(config.primeVacancesPct || 0) / 100);
+    }
+    
+    moisDetail.push({
+      mois: m, key, salaireBase, primeExp: primeExp.montant, primeNoel, primeVacances,
+      brutEstime, netFiscalEstime, pasEstime, netEstime, primeTransport,
+      joursTravailles, ticketsEstimes: joursTravailles, valeurTR,
+      tauxValoAnnee: primeExp.taux,
+    });
+    
+    totalSalaire += salaireBase;
+    totalPrime += primeExp.montant;
+    totalPrimeNoel += primeNoel;
+    totalPrimeVacances += primeVacances;
+    totalTR += valeurTR;
+    totalTickets += joursTravailles;
+    totalRTT += rttPrisMois;
+    totalCP += cpPrisMois;
+    totalBrut += brutEstime;
+    totalNet += netEstime;
+    totalNetFiscal += netFiscalEstime;
+    totalPAS += pasEstime;
+    totalTransport += primeTransport;
+  }
+  
+  return {
+    annee, moisDetail,
+    totalSalaire: round2(totalSalaire),
+    totalPrime: round2(totalPrime),
+    totalPrimeNoel: round2(totalPrimeNoel),
+    totalPrimeVacances: round2(totalPrimeVacances),
+    totalTR: round2(totalTR),
+    totalTickets: totalTickets,
+    totalRTT, totalCP,
+    totalBrut: round2(totalBrut),
+    totalNet: round2(totalNet),
+    totalNetFiscal: round2(totalNetFiscal),
+    totalPAS: round2(totalPAS),
+    totalTransport: round2(totalTransport),
+    totalGeneral: round2(totalSalaire + totalPrime + totalPrimeNoel + totalPrimeVacances + totalTransport),
+  };
+}
+
+const STORAGE_KEY = "suivi_salaire_data";
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return { ...DEFAULT_STATE, ...parsed, config: { ...DEFAULT_STATE.config, ...(parsed.config || {}) } };
+    }
+  } catch (e) {}
+  return DEFAULT_STATE;
+}
+function saveState(nextState) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState)); return true; } catch (e) { return false; }
+}
+
+function Card({ children, className = "", dark = false, style = {} }) {
+  const base = dark ? { backgroundColor: COLORS.ink, color: "#fff" } : { backgroundColor: "#fff", color: COLORS.ink };
+  return (<div className={"rounded-2xl border p-4 " + (dark ? "border-transparent" : "border-stone-200") + " " + className} style={{ ...base, ...style }}>{children}</div>);
+}
+
+function Row({ children, index = 0 }) {
+  return (<div className="flex items-center justify-between rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: index % 2 === 1 ? COLORS.stripe : "transparent" }}>{children}</div>);
+}
+
+function App() {
+  const [state, setState] = useState(loadState);
+  const [tab, setTab] = useState("dashboard");
+  const [saving, setSaving] = useState(false);
+
+  function persist(nextState) {
+    setState(nextState);
+    setSaving(true);
+    saveState(nextState);
+    setTimeout(() => setSaving(false), 400);
+  }
+
+  function updateConfig(patch) { persist({ ...state, config: { ...state.config, ...patch } }); }
+
+  const nicolas = state.personnes.find(p => p.id === "nicolas") || state.personnes[0];
+  const estimation2026 = useMemo(() => estimerAnnee(nicolas, 2026, state.joursPris || [], state.config), [nicolas, state.joursPris, state.config]);
+
+  const tabs = [
+    { id: "dashboard", label: "Accueil" },
+    { id: "salaires", label: "Salaires" },
+    { id: "estimation", label: "Estimation" },
+  ];
+
+  return (
+    <div className="min-h-screen pb-24" style={{ backgroundColor: COLORS.paper, color: COLORS.ink }}>
+      <header className="px-5 pt-6 pb-5" style={{ backgroundColor: COLORS.ink, color: "#fff" }}>
+        <h1 className="font-display text-2xl" style={{ fontWeight: 600 }}>Salaire, RTT & Congés</h1>
+        <p className="text-xs mt-1" style={{ color: "#8FA69B" }}>Nicolas Jutge — Classe 3</p>
+      </header>
+
+      <main className="px-4 pt-5 max-w-xl mx-auto">
+        {tab === "dashboard" && (
+          <div className="space-y-4">
+            <Card dark>
+              <p className="text-xs uppercase tracking-wide" style={{ color: "#8FA69B" }}>Référence février 2026</p>
+              <div className="font-mono grid grid-cols-2 gap-2 mt-2 text-sm">
+                <div><p className="text-xs text-stone-400">Net payé</p><p className="font-semibold">1 776,06 €</p></div>
+                <div><p className="text-xs text-stone-400">Net fiscal</p><p className="font-semibold">2 123,73 €</p></div>
+                <div><p className="text-xs text-stone-400">PAS</p><p className="font-semibold">46,72 €</p></div>
+                <div><p className="text-xs text-stone-400">Prime exp.</p><p className="font-semibold">188,03 €</p></div>
+                <div><p className="text-xs text-stone-400">TR</p><p className="font-semibold">18</p></div>
+              </div>
+            </Card>
+            <Card>
+              <p className="text-sm font-medium mb-3">Récapitulatif 2026</p>
+              <div className="space-y-1">
+                <Row index={0}><span>Salaire</span><span className="font-mono">{formatEUR(estimation2026.totalSalaire)}</span></Row>
+                <Row index={1}><span>Prime exp.</span><span className="font-mono">{formatEUR(estimation2026.totalPrime)}</span></Row>
+                <Row index={2}><span>Prime Noël</span><span className="font-mono">{formatEUR(estimation2026.totalPrimeNoel)}</span></Row>
+                <Row index={3}><span>Prime vacances</span><span className="font-mono">{formatEUR(estimation2026.totalPrimeVacances)}</span></Row>
+                <Row index={4}><span>TR (nombre)</span><span className="font-mono">{estimation2026.totalTickets}</span></Row>
+                <Row index={5}><span>Net annuel</span><span className="font-mono font-semibold">{formatEUR(estimation2026.totalNet)}</span></Row>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {tab === "salaires" && (
+          <div className="space-y-4">
+            <Card>
+              <p className="text-sm font-medium mb-3">Bulletins réels — Nicolas</p>
+              {HISTORIQUE.map((b, i) => (
+                <Card key={i} style={{ backgroundColor: COLORS.stripe }} className="mb-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-medium">{b.periode}</p>
+                    <p className="text-xs text-stone-500">{formatDateFR(b.paiement)}</p>
+                  </div>
+                  <div className="font-mono grid grid-cols-2 gap-y-1.5 text-xs">
+                    <p>Salaire réf.</p><p className="text-right">{formatEUR(b.salaireRef)}</p>
+                    <p>Net payé</p><p className="text-right font-semibold">{formatEUR(b.netPaye)}</p>
+                    <p>Net fiscal</p><p className="text-right">{formatEUR(b.netFiscal)}</p>
+                    <p>PAS</p><p className="text-right">{formatEUR(b.pas)}</p>
+                    <p>Prime exp.</p><p className="text-right">{formatEUR(b.primeExp)}</p>
+                    <p>TR (nombre)</p><p className="text-right">{b.tr}</p>
+                  </div>
+                  {b.note && <p className="text-xs mt-2 pt-2 border-t border-stone-300" style={{ color: COLORS.gold }}>{b.note}</p>}
+                </Card>
+              ))}
+            </Card>
+            <Card>
+              <p className="text-sm font-medium mb-3">Autres personnes</p>
+              <div className="space-y-2">
+                {state.personnes.filter(p => p.id !== "nicolas").map(p => (
+                  <div key={p.id} className="p-2 rounded-lg" style={{ backgroundColor: COLORS.stripe }}>
+                    <p className="text-sm font-medium">{p.nom || "(sans nom)"}</p>
+                    <p className="text-xs text-stone-400">ID: {p.id}</p>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {tab === "estimation" && (
+          <div className="space-y-4">
+            <Card>
+              <p className="text-sm font-medium mb-2">Estimation 2026</p>
+              <div className="space-y-1">
+                <Row index={0}><span>Salaire</span><span className="font-mono">{formatEUR(estimation2026.totalSalaire)}</span></Row>
+                <Row index={1}><span>Prime exp. (9%→10,5%)</span><span className="font-mono">{formatEUR(estimation2026.totalPrime)}</span></Row>
+                <Row index={2}><span>Prime Noël</span><span className="font-mono">{formatEUR(estimation2026.totalPrimeNoel)}</span></Row>
+                <Row index={3}><span>Prime vacances</span><span className="font-mono">{formatEUR(estimation2026.totalPrimeVacances)}</span></Row>
+                <Row index={4}><span>TR (nombre)</span><span className="font-mono">{estimation2026.totalTickets}</span></Row>
+                <Row index={5}><span>Brut</span><span className="font-mono">{formatEUR(estimation2026.totalBrut)}</span></Row>
+                <Row index={6}><span>Net</span><span className="font-mono font-semibold">{formatEUR(estimation2026.totalNet)}</span></Row>
+                <Row index={7}><span>Net fiscal</span><span className="font-mono">{formatEUR(estimation2026.totalNetFiscal)}</span></Row>
+                <Row index={8}><span>PAS</span><span className="font-mono">{formatEUR(estimation2026.totalPAS)}</span></Row>
+              </div>
+            </Card>
+            <Card>
+              <p className="text-sm font-medium mb-2">Détail mensuel 2026</p>
+              <div className="text-xs space-y-1 font-mono">
+                <div className="flex justify-between px-2 py-1 border-b pb-1">
+                  <span>Mois</span><span>Salaire</span><span>Prime</span><span>TR</span>
+                </div>
+                {estimation2026.moisDetail.map((m, i) => (
+                  <div key={i} className="flex justify-between px-2 py-1" style={{ backgroundColor: i % 2 === 1 ? COLORS.stripe : "transparent" }}>
+                    <span>{MOIS_FR[m.mois-1].slice(0,3)}</span>
+                    <span>{formatEUR(m.salaireBase)}</span>
+                    <span>{formatEUR(m.primeExp)} ({m.tauxValoAnnee}%)</span>
+                    <span>{m.ticketsEstimes}</span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+        )}
+      </main>
+
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-stone-200">
+        <div className="max-w-xl mx-auto grid grid-cols-3">
+          {tabs.map(t => (<button key={t.id} onClick={() => setTab(t.id)} className="py-3 text-xs font-medium" style={{ color: tab === t.id ? COLORS.ink : "#A8A29E" }}>{t.label}</button>))}
+        </div>
+      </nav>
+
+      {saving && (<div className="fixed top-4 right-4 text-white text-xs px-3 py-1.5 rounded-full shadow-lg" style={{ backgroundColor: COLORS.ink }}>Enregistrement…</div>)}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
