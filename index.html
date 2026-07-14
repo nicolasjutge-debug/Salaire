@@ -89,11 +89,15 @@ const HISTORIQUE = [
 
 const DEFAULT_STATE = {
   config: {
-    rttBaseAnnuel: 26, cpBaseAnnuel: 27, cpCycleDebut: "06-01", maxRttConsecutifs: 5,
+    rttBaseAnnuel: 26, cpBaseAnnuel: 27, cpCycleDebut: "01-01", maxRttConsecutifs: 5,
     primeVacancesPct: 50, moisPrimeVacances: 5, primeNoelPct: 100, moisPrimeNoel: 11,
     ticketNombreMois: 17, ticketValeur: 12, ticketPartSalarialePct: 40,
-    tauxPrimeExperience: 1.5, valorisationConventionPct: 9, valorisationConventionDate: "2025-08-01",
-    ratioBrutSurBase: 1.085, ratioNetSurBrut: 0.723,
+    valorisationConventionDate: "2025-08-01",
+    baseConventionnelleClasse3: 2089.17, valorisationTauxDepart: 9, valorisationIncrementAnnuel: 1.5, valorisationPlafond: 15,
+    ratioBrutSurBase: 1.085, ratioNetSurBrut: 0.723, ratioNetFiscalSurBrut: 0.858,
+    mutuelleConjointMensuel: 48.08,
+    tauxPAS: 1.9,
+    abonnementTransportMensuel: 56, remboursementTransportPct: 50,
   },
   personnes: [
     { id: "nicolas", nom: "Nicolas", dateEntree: "2019-07-01", entreesMensuelles: {
@@ -217,7 +221,21 @@ function calculRTTMensuel(annee, joursPris, base, dateEntreeStr) {
   return lignes;
 }
 
-function estimerAnnee(personne, annee, joursPris, config) {
+function tauxValorisationPourAnnee(annee, config) {
+  const depart = Number(config.valorisationTauxDepart != null ? config.valorisationTauxDepart : 9);
+  const increment = Number(config.valorisationIncrementAnnuel != null ? config.valorisationIncrementAnnuel : 1.5);
+  const plafond = Number(config.valorisationPlafond != null ? config.valorisationPlafond : 15);
+  if (annee <= 2025) return depart;
+  const taux = depart + (annee - 2025) * increment;
+  return Math.min(plafond, round2(taux));
+}
+function primeExperienceMensuelle(annee, config) {
+  const base = Number(config.baseConventionnelleClasse3) || 2089.17;
+  const taux = tauxValorisationPourAnnee(annee, config);
+  return { base: base, taux: taux, montant: round2(base * taux / 100) };
+}
+
+function estimerAnnee(personne, annee, joursPris, config, suiviConges) {
   const src = personne.entreesMensuelles || {};
   const connues = Object.keys(src).filter(function(k) { return src[k] && src[k].salaire; }).sort();
   let dernierConnu = null;
@@ -226,7 +244,8 @@ function estimerAnnee(personne, annee, joursPris, config) {
 
   const dateValorisation = config.valorisationConventionDate || "2025-08-01";
   const moisDetail = [];
-  let totalSalaire = 0, totalPrime = 0, totalTR = 0, totalTickets = 0, totalRTT = 0, totalCP = 0, totalBrut = 0, totalNet = 0;
+  let totalSalaire = 0, totalPrime = 0, totalTR = 0, totalTickets = 0, totalRTT = 0, totalCP = 0, totalBrut = 0, totalNet = 0, totalNetFiscal = 0, totalPAS = 0, totalTransport = 0;
+  const primeExpInfo = primeExperienceMensuelle(annee, config);
 
   for (let m = 1; m <= 12; m++) {
     const key = annee + "-" + String(m).padStart(2, "0");
@@ -235,33 +254,44 @@ function estimerAnnee(personne, annee, joursPris, config) {
     const apresValorisation = key >= dateValorisation.slice(0,7);
     let salaireBase = estimeSalaire ? dernierConnu : Number(reel.salaire);
     let valorisationAppliquee = false;
+    const tauxValoAnnee = tauxValorisationPourAnnee(annee, config);
     if (estimeSalaire && apresValorisation && salaireBase != null) {
-      salaireBase = round2(salaireBase * (1 + Number(config.valorisationConventionPct||0)/100));
+      salaireBase = round2(salaireBase * (1 + tauxValoAnnee/100));
       valorisationAppliquee = true;
     }
     salaireBase = salaireBase || 0;
-    const primeExperience = round2(salaireBase * Number(config.tauxPrimeExperience||0) / 100);
+    const baseConv = primeExpInfo.base;
+    const primeExperience = primeExpInfo.montant;
     const brutEstime = round2(salaireBase * Number(config.ratioBrutSurBase||1));
-    const netEstime = round2(brutEstime * Number(config.ratioNetSurBrut||1));
+    const netFiscalEstime = round2(brutEstime * Number(config.ratioNetFiscalSurBrut||1));
+    const pasEstime = round2(netFiscalEstime * Number(config.tauxPAS||0) / 100);
+    const mutuelleConjoint = Number(config.mutuelleConjointMensuel) || 0;
+    const netEstime = round2(brutEstime * Number(config.ratioNetSurBrut||1) - mutuelleConjoint);
+    const primeTransport = round2(Number(config.abonnementTransportMensuel||0) * Number(config.remboursementTransportPct||0) / 100);
 
     const joursOuvres = joursOuvresDansMois(annee, m);
-    const rttPrisMois = joursPris.filter(function(j){ return j.date.slice(0,7)===key && j.type==="RTT"; }).reduce(function(s,j){return s+Number(j.duree);},0);
-    const cpPrisMois = joursPris.filter(function(j){ return j.date.slice(0,7)===key && j.type==="CP"; }).reduce(function(s,j){return s+Number(j.duree);},0);
+    const rttPrisMois = suiviConges === false ? 0 : joursPris.filter(function(j){ return j.date.slice(0,7)===key && j.type==="RTT"; }).reduce(function(s,j){return s+Number(j.duree);},0);
+    const cpPrisMois = suiviConges === false ? 0 : joursPris.filter(function(j){ return j.date.slice(0,7)===key && j.type==="CP"; }).reduce(function(s,j){return s+Number(j.duree);},0);
     const estJourOuvre = function(j) { const js = parseISO(j.date).getDay(); return js !== 0 && js !== 6; };
-    const rttPrisOuvre = joursPris.filter(function(j){ return j.date.slice(0,7)===key && j.type==="RTT" && estJourOuvre(j); }).reduce(function(s,j){return s+Number(j.duree);},0);
-    const cpPrisOuvre = joursPris.filter(function(j){ return j.date.slice(0,7)===key && j.type==="CP" && estJourOuvre(j); }).reduce(function(s,j){return s+Number(j.duree);},0);
+    const rttPrisOuvre = suiviConges === false ? 0 : joursPris.filter(function(j){ return j.date.slice(0,7)===key && j.type==="RTT" && estJourOuvre(j); }).reduce(function(s,j){return s+Number(j.duree);},0);
+    const cpPrisOuvre = suiviConges === false ? 0 : joursPris.filter(function(j){ return j.date.slice(0,7)===key && j.type==="CP" && estJourOuvre(j); }).reduce(function(s,j){return s+Number(j.duree);},0);
     const joursTravailles = Math.max(0, joursOuvres - rttPrisOuvre - cpPrisOuvre);
+    const joursDeduits = rttPrisOuvre + cpPrisOuvre;
     const valeurTR = round2(joursTravailles * (Number(config.ticketValeur)||0) * (Number(config.ticketPartSalarialePct)||0) / 100);
-    const totalMois = round2(salaireBase + primeExperience);
+    const valeurTREmployeur = round2(joursTravailles * (Number(config.ticketValeur)||0) * (100 - (Number(config.ticketPartSalarialePct)||0)) / 100);
+    const totalMois = round2(salaireBase + primeExperience + primeTransport);
 
     moisDetail.push({
       mois: m, key: key, estimeSalaire: estimeSalaire, apresValorisation: apresValorisation, valorisationAppliquee: valorisationAppliquee,
       salaireBase: salaireBase, primeExperience: primeExperience, brutEstime: brutEstime, netEstime: netEstime,
-      joursOuvres: joursOuvres, rttPris: rttPrisMois, cpPris: cpPrisMois, joursTravailles: joursTravailles,
-      ticketsEstimes: joursTravailles, valeurTR: valeurTR, totalMois: totalMois,
+      netFiscalEstime: netFiscalEstime, pasEstime: pasEstime, mutuelleConjoint: mutuelleConjoint, primeTransport: primeTransport,
+      baseConventionnelle: baseConv, tauxValorisationAnnee: tauxValoAnnee,
+      joursOuvres: joursOuvres, rttPris: rttPrisMois, cpPris: cpPrisMois, joursDeduits: joursDeduits, joursTravailles: joursTravailles,
+      ticketsEstimes: joursTravailles, valeurTR: valeurTR, valeurTREmployeur: valeurTREmployeur, totalMois: totalMois,
     });
     totalSalaire += salaireBase; totalPrime += primeExperience; totalTR += valeurTR; totalTickets += joursTravailles;
     totalRTT += rttPrisMois; totalCP += cpPrisMois; totalBrut += brutEstime; totalNet += netEstime;
+    totalNetFiscal += netFiscalEstime; totalPAS += pasEstime; totalTransport += primeTransport;
   }
 
   return {
@@ -269,15 +299,21 @@ function estimerAnnee(personne, annee, joursPris, config) {
     totalSalaire: round2(totalSalaire), totalPrime: round2(totalPrime), totalTR: round2(totalTR),
     totalTickets: totalTickets, totalRTT: totalRTT, totalCP: totalCP,
     totalBrut: round2(totalBrut), totalNet: round2(totalNet),
-    totalGeneral: round2(totalSalaire + totalPrime),
+    totalNetFiscal: round2(totalNetFiscal), totalPAS: round2(totalPAS), totalTransport: round2(totalTransport),
+    totalGeneral: round2(totalSalaire + totalPrime + totalTransport),
     dernierConnu: dernierConnu,
     nbMoisEstimes: moisDetail.filter(function(m){return m.estimeSalaire;}).length,
     parametres: {
-      tauxPrimeExperience: Number(config.tauxPrimeExperience)||0,
-      valorisationConventionPct: Number(config.valorisationConventionPct)||0,
+      tauxPrimeExperience: primeExpInfo.taux,
+      valorisationTauxAnnee: tauxValorisationPourAnnee(annee, config),
+      baseConventionnelleClasse3: Number(config.baseConventionnelleClasse3)||0,
       valorisationConventionDate: dateValorisation,
       ticketValeur: Number(config.ticketValeur)||0,
       ticketPartSalarialePct: Number(config.ticketPartSalarialePct)||0,
+      mutuelleConjointMensuel: Number(config.mutuelleConjointMensuel)||0,
+      tauxPAS: Number(config.tauxPAS)||0,
+      abonnementTransportMensuel: Number(config.abonnementTransportMensuel)||0,
+      remboursementTransportPct: Number(config.remboursementTransportPct)||0,
     },
   };
 }
@@ -288,8 +324,8 @@ function archiverAnnee(estimation) {
   texte += "========================================================\n\n";
   texte += "HYPOTHESES ET PARAMETRES\n";
   texte += "- Salaire de base pour les mois non renseignés : dernière valeur connue (" + formatEUR(estimation.dernierConnu||0) + ")\n";
-  texte += "- Taux prime d'expérience : " + estimation.parametres.tauxPrimeExperience + " %\n";
-  texte += "- Valorisation base conventionnelle : +" + estimation.parametres.valorisationConventionPct + " % à compter de " + formatDateFR(estimation.parametres.valorisationConventionDate) + " (mois estimés uniquement)\n";
+  texte += "- Prime d'expérience : base " + formatEUR(estimation.parametres.baseConventionnelleClasse3) + " × taux " + estimation.parametres.tauxPrimeExperience + " % (= taux de revalorisation " + estimation.annee + ")\n";
+  texte += "- Base conventionnelle Classe 3 : " + formatEUR(estimation.parametres.baseConventionnelleClasse3) + ", revalorisée à " + estimation.parametres.valorisationTauxAnnee + " % pour " + estimation.annee + " (mois estimés à partir de " + formatDateFR(estimation.parametres.valorisationConventionDate) + ")\n";
   texte += "- Titre-restaurant : 1 par jour ouvré réellement travaillé (jours ouvrés - RTT pris - CP pris), valeur " + formatEUR(estimation.parametres.ticketValeur) + ", part salariale " + estimation.parametres.ticketPartSalarialePct + " %\n\n";
   texte += "DETAIL MENSUEL\n";
   texte += "Mois          Salaire      Prime exp.   Jours trav.  TR (valeur)   Total mois\n";
@@ -303,6 +339,8 @@ function archiverAnnee(estimation) {
   texte += "Total général (salaire + prime) : " + formatEUR(estimation.totalGeneral) + "\n";
   texte += "Total titres-restaurant : " + formatEUR(estimation.totalTR) + " (" + estimation.totalTickets + " jours travaillés)\n";
   texte += "Brut annuel estimé : " + formatEUR(estimation.totalBrut) + " — Net estimé : " + formatEUR(estimation.totalNet) + "\n";
+  texte += "Net fiscal estimé : " + formatEUR(estimation.totalNetFiscal) + " — PAS estimé : " + formatEUR(estimation.totalPAS) + "\n";
+  texte += "Mutuelle conjoint (annuel) : " + formatEUR(estimation.parametres.mutuelleConjointMensuel * 12) + " — Prime transport (annuel) : " + formatEUR(estimation.totalTransport) + "\n";
   texte += "Prime de vacances : " + (estimation.primeVacances != null ? formatEUR(estimation.primeVacances) : "à renseigner") + " — Prime de Noël : " + (estimation.primeNoel != null ? formatEUR(estimation.primeNoel) : "à renseigner") + "\n";
   texte += "Total RTT pris : " + estimation.totalRTT + " j — Total CP pris : " + estimation.totalCP + " j\n";
   texte += "Mois estimés (données manquantes) : " + estimation.nbMoisEstimes + " / 12\n";
@@ -1035,6 +1073,11 @@ function EstimationTab({ nicolas, joursPris, config, updateConfig, archives, ajo
           <div><p className="text-xs" style={{ color: "#8FA69B" }}>Brut annuel estimé</p><p className="font-mono text-sm">{formatEUR(estimation.totalBrut)}</p></div>
           <div><p className="text-xs" style={{ color: "#8FA69B" }}>🧾 Net estimé</p><p className="font-mono text-sm">{formatEUR(estimation.totalNet)}</p></div>
         </div>
+        <div className="grid grid-cols-3 gap-2 mt-2 pt-2" style={{ borderTop: "1px solid #33443d" }}>
+          <div><p className="text-xs" style={{ color: "#8FA69B" }}>🧾 Net fiscal</p><p className="font-mono text-sm">{formatEUR(estimation.totalNetFiscal)}</p></div>
+          <div><p className="text-xs" style={{ color: "#8FA69B" }}>📉 PAS</p><p className="font-mono text-sm">{formatEUR(estimation.totalPAS)}</p></div>
+          <div><p className="text-xs" style={{ color: "#8FA69B" }}>🚌 Transport</p><p className="font-mono text-sm">{formatEUR(estimation.totalTransport)}</p></div>
+        </div>
       </Card>
 
       <Card>
@@ -1095,10 +1138,12 @@ function EstimationTab({ nicolas, joursPris, config, updateConfig, archives, ajo
               return (
                 <div key={m.mois} className="text-xs border-t border-stone-100 pt-2">
                   <p className="font-medium capitalize mb-1">{MOIS_FR[m.mois-1]} {annee}{m.estimeSalaire ? " (estimé)" : " (réel)"}</p>
-                  <p className="text-stone-500 font-mono">Salaire base : {formatEUR(m.salaireBase)}{m.valorisationAppliquee ? " (dont +" + config.valorisationConventionPct + "% valorisation)" : ""}</p>
-                  <p className="text-stone-500 font-mono">Prime d'expérience : {formatEUR(m.salaireBase)} × {config.tauxPrimeExperience}% = {formatEUR(m.primeExperience)}</p>
-                  <p className="text-stone-500 font-mono">Jours ouvrés : {m.joursOuvres} − 🌴 CP {m.cpPris} − 📅 RTT {m.rttPris} − 🚫 autres absences 0 (non gérées) = {m.joursTravailles} jours travaillés</p>
-                  <p className="text-stone-500 font-mono">🍽️ TR attribués : {m.ticketsEstimes} × {formatEUR(config.ticketValeur)} × {config.ticketPartSalarialePct}% = 💶 {formatEUR(m.valeurTR)}</p>
+                  <p className="text-stone-500 font-mono">Salaire base : {formatEUR(m.salaireBase)}{m.valorisationAppliquee ? " (dont +" + m.tauxValorisationAnnee + "% valorisation " + annee + ")" : ""}</p>
+                  <p className="text-stone-500 font-mono">Prime d'expérience : base {formatEUR(m.baseConventionnelle)} × taux {m.tauxValorisationAnnee}% ({annee}) = {formatEUR(m.primeExperience)}</p>
+                  <p className="text-stone-500 font-mono">Jours ouvrés : {m.joursOuvres} − 🌴 CP {m.cpPris} − 📅 RTT {m.rttPris} − 🚫 autres absences 0 (non gérées) = jours déduits {m.joursDeduits} → {m.joursTravailles} jours travaillés</p>
+                  <p className="text-stone-500 font-mono">🍽️ TR attribués : {m.ticketsEstimes} — part salariale {formatEUR(config.ticketValeur)}×{config.ticketPartSalarialePct}%=💶{formatEUR(m.valeurTR)} / part employeur {formatEUR(m.valeurTREmployeur)}</p>
+                  <p className="text-stone-500 font-mono">🧾 Net fiscal estimé : {formatEUR(m.brutEstime)} × {config.ratioNetFiscalSurBrut} = {formatEUR(m.netFiscalEstime)} — 📉 PAS : × {config.tauxPAS}% = {formatEUR(m.pasEstime)}</p>
+                  <p className="text-stone-500 font-mono">Déductions : mutuelle conjoint {formatEUR(m.mutuelleConjoint)} — 🚌 Transport (50% de {formatEUR(config.abonnementTransportMensuel)}) : +{formatEUR(m.primeTransport)}</p>
                   <p className="font-medium mt-1">Total du mois : {formatEUR(m.totalMois)}</p>
                 </div>
               );
@@ -1111,7 +1156,7 @@ function EstimationTab({ nicolas, joursPris, config, updateConfig, archives, ajo
         <p className="text-sm font-medium mb-2">Hypothèses retenues</p>
         <ul className="text-xs text-stone-500 space-y-1.5 list-none">
           <li>• Pour les mois sans salaire renseigné, dernière valeur connue utilisée : {estimation.dernierConnu != null ? formatEUR(estimation.dernierConnu) : "aucune donnée disponible"}.</li>
-          <li>• Les mois estimés à partir de {formatDateFR(config.valorisationConventionDate)} incluent la valorisation conventionnelle de +{config.valorisationConventionPct}%.</li>
+          <li>• Les mois estimés à partir de {formatDateFR(config.valorisationConventionDate)} appliquent le taux de revalorisation de l'année en cours au salaire de référence utilisé.</li>
           <li>• Les titres-restaurant supposent 1 titre par jour ouvré réellement travaillé (jours ouvrés du mois, moins RTT et CP posés).</li>
           <li>• Les jours fériés ne sont pas déduits des jours ouvrés (seuls samedis/dimanches sont exclus) — le nombre de jours travaillés peut donc être légèrement surestimé les mois avec jour férié.</li>
           <li>• Brut et net sont des estimations dérivées du salaire mensuel via des ratios observés sur tes bulletins réels (brut ≈ ×{config.ratioBrutSurBase}, net ≈ ×{config.ratioNetSurBrut} du brut) — ils n'intègrent pas d'éventuels éléments variables (heures sup, primes exceptionnelles).</li>
@@ -1122,18 +1167,27 @@ function EstimationTab({ nicolas, joursPris, config, updateConfig, archives, ajo
         <p className="text-sm font-medium mb-3">Formules utilisées</p>
         <div className="text-xs text-stone-500 space-y-1.5 font-mono">
           <p>Salaire mensuel = donnée réelle, ou dernière connue × (1+valorisation) si mois estimé après {formatDateFR(config.valorisationConventionDate)}</p>
-          <p>Prime d'expérience = Salaire mensuel × Taux prime ({config.tauxPrimeExperience}%)</p>
+          <p>Prime d'expérience = Base conventionnelle Classe 3 ({formatEUR(config.baseConventionnelleClasse3)}) × Taux de revalorisation de l'année</p>
           <p>Brut estimé = Salaire mensuel × {config.ratioBrutSurBase} (ratio observé sur bulletins réels)</p>
-          <p>Net estimé = Brut estimé × {config.ratioNetSurBrut} (ratio observé sur bulletins réels)</p>
+          <p>Net estimé = Brut estimé × {config.ratioNetSurBrut} (ratio observé sur bulletins réels) − Mutuelle conjoint</p>
+          <p>Net fiscal estimé = Brut estimé × {config.ratioNetFiscalSurBrut} — PAS = Net fiscal × Taux PAS ({config.tauxPAS}%)</p>
+          <p>Prime transport = Abonnement STAR/Keolis × Remboursement ({config.remboursementTransportPct}%)</p>
           <p>Jours travaillés (= nb TR) = Jours ouvrés du mois − CP pris − RTT pris (week-ends jamais déduits deux fois)</p>
           <p>Valeur TR = Nb TR × Valeur unitaire × Part salariale ({config.ticketPartSalarialePct}%) — cumul annuel = somme des 12 mois</p>
           <p>Total mensuel = Salaire mensuel + Prime d'expérience</p>
         </div>
         <div className="grid grid-cols-2 gap-3 mt-3 pt-3 border-t border-stone-200">
-          <NumberField label="Taux prime d'expérience" value={config.tauxPrimeExperience} onChange={v => updateConfig({ tauxPrimeExperience: v })} suffix="%" />
-          <NumberField label="Valorisation convention" value={config.valorisationConventionPct} onChange={v => updateConfig({ valorisationConventionPct: v })} suffix="%" />
+          <NumberField label="Base conventionnelle Classe 3" value={config.baseConventionnelleClasse3} onChange={v => updateConfig({ baseConventionnelleClasse3: v })} suffix="€" />
+          <NumberField label="Taux revalorisation 2025" value={config.valorisationTauxDepart} onChange={v => updateConfig({ valorisationTauxDepart: v })} suffix="%" />
+          <NumberField label="Incrément annuel" value={config.valorisationIncrementAnnuel} onChange={v => updateConfig({ valorisationIncrementAnnuel: v })} suffix="pts/an" />
+          <NumberField label="Plafond revalorisation" value={config.valorisationPlafond} onChange={v => updateConfig({ valorisationPlafond: v })} suffix="%" />
           <NumberField label="Ratio brut / base" value={config.ratioBrutSurBase} onChange={v => updateConfig({ ratioBrutSurBase: v })} step="0.001" />
           <NumberField label="Ratio net / brut" value={config.ratioNetSurBrut} onChange={v => updateConfig({ ratioNetSurBrut: v })} step="0.001" />
+          <NumberField label="Ratio net fiscal / brut" value={config.ratioNetFiscalSurBrut} onChange={v => updateConfig({ ratioNetFiscalSurBrut: v })} step="0.001" />
+          <NumberField label="Taux PAS" value={config.tauxPAS} onChange={v => updateConfig({ tauxPAS: v })} suffix="%" />
+          <NumberField label="Mutuelle conjoint / mois" value={config.mutuelleConjointMensuel} onChange={v => updateConfig({ mutuelleConjointMensuel: v })} suffix="€" />
+          <NumberField label="Abonnement STAR/Keolis" value={config.abonnementTransportMensuel} onChange={v => updateConfig({ abonnementTransportMensuel: v })} suffix="€" />
+          <NumberField label="Remboursement transport" value={config.remboursementTransportPct} onChange={v => updateConfig({ remboursementTransportPct: v })} suffix="%" />
           <div className="col-span-2">
             <TextDateField label="Date d'effet de la valorisation" value={config.valorisationConventionDate} onChange={v => updateConfig({ valorisationConventionDate: v })} />
           </div>
@@ -1154,7 +1208,7 @@ function EstimationTab({ nicolas, joursPris, config, updateConfig, archives, ajo
               <Row key={a.annee} index={i}>
                 <div>
                   <p className="font-mono">{a.annee} — Total {formatEUR(a.estimation.totalGeneral)}</p>
-                  <p className="text-xs text-stone-400">Archivée le {formatDateFR(a.dateArchivage)} · taux prime {a.estimation.parametres.tauxPrimeExperience}%, valorisation +{a.estimation.parametres.valorisationConventionPct}%</p>
+                  <p className="text-xs text-stone-400">Archivée le {formatDateFR(a.dateArchivage)} · prime d'expérience à {a.estimation.parametres.tauxPrimeExperience}% (base {formatEUR(a.estimation.parametres.baseConventionnelleClasse3)})</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <button onClick={() => archiverAnnee(a.estimation)}><DownloadIcon size={15} color={COLORS.accent} /></button>
@@ -1175,16 +1229,12 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifie
   const [editingJourId, setEditingJourId] = useState(null);
   const [periodeForm, setPeriodeForm] = useState({ dateDebut: "", dateFin: "", label: "" });
   const [editingPeriodeId, setEditingPeriodeId] = useState(null);
-  const [anneeRTT, setAnneeRTT] = useState(today.getFullYear());
 
   const [modeSelection, setModeSelection] = useState("jours");
   const [joursChoisis, setJoursChoisis] = useState([]);
   const [dateAAjouter, setDateAAjouter] = useState("");
 
   const nicolasP = personnes.filter(function(p) { return p.id === "nicolas"; })[0];
-  const rttMensuel = useMemo(function() {
-    return calculRTTMensuel(anneeRTT, joursPris, config.rttBaseAnnuel, nicolasP ? nicolasP.dateEntree : null);
-  }, [anneeRTT, joursPris, config.rttBaseAnnuel, nicolasP]);
 
   const maxRtt = Number(config.maxRttConsecutifs) || 5;
   const dateFinEffective = form.dateFin || form.date;
@@ -1279,33 +1329,6 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifie
         <p className="text-xs text-stone-500">En cours d'acquisition (CP, cycle suivant)</p>
         <p className="font-mono text-lg font-semibold mt-1">{formatJours(conges.cpEnCours)} j</p>
         <p className="text-xs text-stone-400 mt-1">Cycle d'usage courant depuis le {formatDateFR(toLocalISODate(conges.debutCycleCP))} · RTT sur année civile depuis le 1er janvier</p>
-      </Card>
-
-      <Card>
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-medium">📆 RTT — détail mensuel {anneeRTT}</p>
-          <div className="flex gap-1">
-            <button onClick={() => setAnneeRTT(anneeRTT-1)} className="px-2 py-1 text-xs rounded-lg" style={{ backgroundColor: COLORS.stripe }}>◀</button>
-            <button onClick={() => setAnneeRTT(anneeRTT+1)} className="px-2 py-1 text-xs rounded-lg" style={{ backgroundColor: COLORS.stripe }}>▶</button>
-          </div>
-        </div>
-        <div className="grid grid-cols-5 gap-1 text-xs text-stone-500 mb-1 px-1">
-          <span>Mois</span><span>Acquis</span><span>Pris</span><span>Solde</span><span>Cumulé</span>
-        </div>
-        <div className="space-y-1">
-          {rttMensuel.map(function(l, i) {
-            return (
-              <div key={l.mois} className="grid grid-cols-5 gap-1 items-center rounded-lg px-1 py-1" style={{ backgroundColor: i % 2 === 1 ? COLORS.stripe : "transparent" }}>
-                <span className="text-xs font-mono capitalize">{MOIS_FR[l.mois-1].slice(0,3)}</span>
-                <span className="font-mono text-xs">{formatJours(l.acquis)}</span>
-                <span className="font-mono text-xs">{formatJours(l.pris)}</span>
-                <span className="font-mono text-xs">{formatJours(l.soldeMois)}</span>
-                <span className="font-mono text-xs font-semibold">{formatJours(l.soldeCumule)}</span>
-              </div>
-            );
-          })}
-        </div>
-        <p className="text-xs text-stone-400 mt-2">Acquis proratisé sur le mois d'entrée si applicable. Base : {config.rttBaseAnnuel} j/an.</p>
       </Card>
 
       <Card>
