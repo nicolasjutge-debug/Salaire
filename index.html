@@ -6,7 +6,6 @@
 <title>Suivi Salaire, RTT & Congés</title>
 <link rel="icon" href="favicon.ico" sizes="any">
 <link rel="icon" href="icons/icon-192.png" type="image/png">
-<link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1F2B27">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -16,6 +15,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.0/babel.min.js"></script>
 <style>
+  /* Feuille utilitaire autonome (remplace Tailwind CDN, non chargeable dans l'aperçu Claude) */
   * { box-sizing: border-box; }
   body { margin: 0; background: #F7F8F4; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   button { font-family: inherit; cursor: pointer; background: none; border: none; padding: 0; }
@@ -80,33 +80,32 @@ const COLORS = {
 const MOIS_FR = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
 
 const HISTORIQUE = [
-  { periode: "Juillet 2025", paiement: "2025-07-31", salaireRef: 2261.76, netPaye: 1779.56, netFiscal: 2109.67, pas: 40.08, primeExp: 31.34, tr: 16, cpAcquis: 27, cpPris: 9, cpSolde: 18 },
-  { periode: "Août 2025", paiement: "2025-08-31", salaireRef: 2261.76, netPaye: 1772.29, netFiscal: 2101.80, pas: 39.93, primeExp: 31.34, tr: 17, cpAcquis: 27, cpPris: 13, cpSolde: 14 },
-  { periode: "Février 2026", paiement: "2026-02-28", salaireRef: 2284.48, netPaye: 1776.06, netFiscal: 2123.73, pas: 46.72, primeExp: 188.03, tr: 18, cpAcquis: 27, cpPris: 12, cpSolde: 15 },
-  { periode: "Novembre 2025", paiement: "2025-11-30", salaireRef: 2261.76, netPaye: 3522.18, netFiscal: 3976.30, pas: 75.55, primeExp: 31.34, tr: 14, cpAcquis: 27, cpPris: 24, cpSolde: 3, note: "Prime 13e mois / Noël : 2 250 €" },
-  { periode: "Mai 2026", paiement: "2026-05-31", salaireRef: 2284.48, netPaye: 2677.83, netFiscal: 3087.42, pas: 67.92, primeExp: 188.03, tr: 20, cpAcquis: 25, cpPris: 10, cpSolde: 15, note: "Demi-prime 13e mois / vacances" },
+  { periode: "Juillet 2025", paiement: "2025-07-31", salaireRef: 2261.76, brut: 2459.21, netSocial: 1879.17, netPaye: 1779.56, cpAcquis: 27, cpPris: 9, cpSolde: 18 },
+  { periode: "Août 2025", paiement: "2025-08-31", salaireRef: 2261.76, brut: 2449.79, netSocial: 1871.75, netPaye: 1772.29, cpAcquis: 27, cpPris: 13, cpSolde: 14 },
+  { periode: "Novembre 2025", paiement: "2025-11-30", salaireRef: 2261.76, brut: 4709.34, netSocial: 3652.55, netPaye: 3522.18, cpAcquis: 27, cpPris: 24, cpSolde: 3, note: "Prime 13e mois / Noël : 2 259,55 €" },
+  { periode: "Mai 2026", paiement: "2026-05-31", salaireRef: 2284.48, brut: 3626.29, netSocial: 2796.88, netPaye: 2677.83, cpAcquis: 25, cpPris: 10, cpSolde: 15, note: "Demi-prime 13e mois / vacances : 1 140,35 €" },
 ];
 
 const DEFAULT_STATE = {
   config: {
     rttBaseAnnuel: 26, cpBaseAnnuel: 27, cpCycleDebut: "01-01", maxRttConsecutifs: 5,
     primeVacancesPct: 50, moisPrimeVacances: 5, primeNoelPct: 100, moisPrimeNoel: 11,
-    ticketNombreMois: 17, ticketValeur: 12, ticketPartSalarialePct: 40,
+    ticketNombreMois: 18, ticketValeur: 12.20, ticketPartSalarialePct: 40,
     valorisationConventionDate: "2025-08-01",
     baseConventionnelleClasse3: 2089.17, valorisationTauxDepart: 9, valorisationIncrementAnnuel: 1.5, valorisationPlafond: 15,
     ratioBrutSurBase: 1.085, ratioNetSurBrut: 0.723, ratioNetFiscalSurBrut: 0.858,
     mutuelleConjointMensuel: 48.08,
-    tauxPAS: 1.9,
+    tauxPAS: 2.2,
     abonnementTransportMensuel: 56, remboursementTransportPct: 50,
-    primeExpTaux2026: 10.5, primeExpDate2026: "2026-08-01",
+    abonnementTransportSuivant: 56, abonnementTransportDateEffet: "2026-12-01",
   },
   personnes: [
     { id: "nicolas", nom: "Nicolas", dateEntree: "2019-07-01", entreesMensuelles: {
-      "2025-07": { salaire: 2261.76, netFiscal: 2109.67, ps: 40.08, netPaye: 1779.56, primeExp: 31.34, tr: 16 },
-      "2025-08": { salaire: 2261.76, netFiscal: 2101.80, ps: 39.93, netPaye: 1772.29, primeExp: 31.34, tr: 17 },
-      "2026-02": { salaire: 2284.48, netFiscal: 2123.73, ps: 46.72, netPaye: 1776.06, primeExp: 188.03, tr: 18 },
-      "2025-11": { salaire: 2261.76, netFiscal: 3976.30, ps: 75.55, netPaye: 3522.18, primeExp: 31.34, tr: 14, primeNoel: 2250 },
-      "2026-05": { salaire: 2284.48, netFiscal: 3087.42, ps: 67.92, netPaye: 2677.83, primeExp: 188.03, tr: 20, primeVacances: 1142.24 },
+      "2025-07": { salaire: 2261.76, netFiscal: 2109.67, ps: 40.08, netPaye: 1779.56 },
+      "2025-08": { salaire: 2261.76, netFiscal: 2101.80, ps: 39.93, netPaye: 1772.29 },
+      "2025-11": { salaire: 2261.76, netFiscal: 3976.30, ps: 75.55, netPaye: 3522.18 },
+      "2026-02": { salaire: 2284.48, netFiscal: 2123.73, ps: 46.72, netPaye: 1776.06 },
+      "2026-05": { salaire: 2284.48, netFiscal: 3087.42, ps: 67.92, netPaye: 2677.83 },
     }},
     { id: "sarah", nom: "Sarah", dateEntree: "", entreesMensuelles: {} },
     { id: "simon", nom: "Simon", dateEntree: "", entreesMensuelles: {} },
@@ -125,103 +124,298 @@ function formatEUR(n) { return (Number(n) || 0).toLocaleString("fr-FR", { minimu
 function formatJours(n) { return round2(n || 0).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function formatDateFR(s) { if (!s) return "-"; return parseISO(s).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" }); }
 function formatMoisAnnee(key) { const parts = key.split("-"); return MOIS_FR[Number(parts[1])-1] + " " + parts[0]; }
+function moisEcoules(debut, fin) {
+  let m = (fin.getFullYear()-debut.getFullYear())*12 + (fin.getMonth()-debut.getMonth());
+  if (fin.getDate() < debut.getDate()) m -= 1;
+  return Math.max(0, m);
+}
+function anneesEcoulees(debut, fin) {
+  let a = fin.getFullYear() - debut.getFullYear();
+  const md = d => d.getMonth()*100 + d.getDate();
+  if (md(fin) < md(debut)) a -= 1;
+  return Math.max(0, a);
+}
+function debutCycle(monthDay, dateRef) {
+  const parts = monthDay.split("-").map(Number);
+  let start = new Date(dateRef.getFullYear(), parts[0]-1, parts[1]);
+  if (start > dateRef) start = new Date(dateRef.getFullYear()-1, parts[0]-1, parts[1]);
+  return start;
+}
+function accrualDepuis(base, dateDebut, dateRef) {
+  const mois = Math.min(12, moisEcoules(dateDebut, dateRef));
+  return round2((Number(base)/12) * mois);
+}
+function bonusAncienneteJours(annees) {
+  if (annees >= 30) return 15;
+  if (annees >= 20) return 10;
+  if (annees >= 10) return 5;
+  return 0;
+}
+function prochainPalier(dateEntreeStr, dateRef) {
+  if (!dateEntreeStr) return null;
+  const dateEntree = parseISO(dateEntreeStr);
+  const annees = anneesEcoulees(dateEntree, dateRef);
+  const next = [10, 20, 30].filter(p => p > annees)[0];
+  if (!next) return null;
+  return { annees: next, date: new Date(dateEntree.getFullYear()+next, dateEntree.getMonth(), dateEntree.getDate()) };
+}
+function dansPeriodeBloquee(date, periodes) {
+  const found = periodes.filter(p => p.dateDebut && p.dateFin && date >= p.dateDebut && date <= p.dateFin);
+  return found.length ? found[0] : null;
+}
+function joursAdjacents(d1, d2) { return (parseISO(d2)-parseISO(d1))/86400000 === 1; }
+function joursDansPlage(dateDebut, dateFin, excludeWeekends) {
+  const result = [];
+  let d = parseISO(dateDebut);
+  const fin = parseISO(dateFin);
+  while (d <= fin) {
+    const jourSemaine = d.getDay();
+    if (!excludeWeekends || (jourSemaine !== 0 && jourSemaine !== 6)) result.push(toLocalISODate(d));
+    d = new Date(d.getFullYear(), d.getMonth(), d.getDate()+1);
+  }
+  return result;
+}
+function semaineOuvree(dateStr) {
+  const d = parseISO(dateStr);
+  const jourSemaine = d.getDay();
+  const diffLundi = jourSemaine === 0 ? -6 : 1 - jourSemaine;
+  const lundi = new Date(d.getFullYear(), d.getMonth(), d.getDate() + diffLundi);
+  const jours = [];
+  for (let i = 0; i < 5; i++) jours.push(toLocalISODate(new Date(lundi.getFullYear(), lundi.getMonth(), lundi.getDate() + i)));
+  return jours;
+}
+function joursOuvresDansMois(annee, mois) {
+  const debut = new Date(annee, mois-1, 1);
+  const fin = new Date(annee, mois, 0);
+  let count = 0;
+  let d = new Date(debut);
+  while (d <= fin) {
+    const js = d.getDay();
+    if (js !== 0 && js !== 6) count++;
+    d = new Date(d.getFullYear(), d.getMonth(), d.getDate()+1);
+  }
+  return count;
+}
 
+function calculRTTMensuel(annee, joursPris, base, dateEntreeStr) {
+  const dateEntree = dateEntreeStr ? parseISO(dateEntreeStr) : null;
+  const lignes = [];
+  let cumule = 0;
+  for (let m = 1; m <= 12; m++) {
+    const key = annee + "-" + String(m).padStart(2, "0");
+    const debutMois = new Date(annee, m-1, 1);
+    const finMois = new Date(annee, m, 0);
+    let acquisMois = Number(base) / 12;
+    if (dateEntree && dateEntree > finMois) {
+      acquisMois = 0;
+    } else if (dateEntree && dateEntree > debutMois && dateEntree <= finMois) {
+      const joursDansLeMois = finMois.getDate();
+      const joursRestants = joursDansLeMois - dateEntree.getDate() + 1;
+      acquisMois = (Number(base)/12) * (joursRestants / joursDansLeMois);
+    }
+    acquisMois = round2(acquisMois);
+    const prisMois = joursPris.filter(function(j) { return j.date.slice(0,7) === key && j.type === "RTT"; }).reduce(function(s,j) { return s + Number(j.duree); }, 0);
+    const soldeMois = round2(acquisMois - prisMois);
+    cumule = round2(cumule + soldeMois);
+    lignes.push({ mois: m, acquis: acquisMois, pris: prisMois, soldeMois: soldeMois, soldeCumule: cumule });
+  }
+  return lignes;
+}
+
+function anneeRevalorisation(annee, mois) {
+  return mois >= 8 ? annee : annee - 1;
+}
+function tauxValorisationPourAnnee(annee, mois, config) {
+  const anneeEffective = anneeRevalorisation(annee, mois);
+  const depart = Number(config.valorisationTauxDepart != null ? config.valorisationTauxDepart : 9);
+  const increment = Number(config.valorisationIncrementAnnuel != null ? config.valorisationIncrementAnnuel : 1.5);
+  const plafond = Number(config.valorisationPlafond != null ? config.valorisationPlafond : 15);
+  if (anneeEffective <= 2025) return depart;
+  const taux = depart + (anneeEffective - 2025) * increment;
+  return Math.min(plafond, round2(taux));
+}
 function primeExperienceMensuelle(annee, mois, config) {
   const base = Number(config.baseConventionnelleClasse3) || 2089.17;
-  const key = annee + "-" + String(mois).padStart(2, "0");
-  const dateHausse2026 = config.primeExpDate2026 || "2026-08-01";
-  
-  let taux = Number(config.valorisationTauxDepart) || 9;
-  if (key >= dateHausse2026.slice(0, 7)) {
-    taux = Number(config.primeExpTaux2026) || 10.5;
-  }
-  
+  const taux = tauxValorisationPourAnnee(annee, mois, config);
   return { base: base, taux: taux, montant: round2(base * taux / 100) };
 }
 
-function estimerAnnee(personne, annee, joursPris, config) {
+function estimerAnnee(personne, annee, joursPris, config, suiviConges) {
   const src = personne.entreesMensuelles || {};
+  const connues = Object.keys(src).filter(function(k) { return src[k] && src[k].salaire; }).sort();
+  let dernierConnu = null;
+  connues.forEach(function(k) { if (k <= annee + "-12") dernierConnu = Number(src[k].salaire); });
+  if (dernierConnu == null && connues.length) dernierConnu = Number(src[connues[0]].salaire);
+
+  const dateValorisation = config.valorisationConventionDate || "2025-08-01";
   const moisDetail = [];
-  let totalSalaire = 0, totalPrime = 0, totalPrimeNoel = 0, totalPrimeVacances = 0, totalTR = 0, totalTickets = 0;
-  let totalRTT = 0, totalCP = 0, totalBrut = 0, totalNet = 0, totalNetFiscal = 0, totalPAS = 0, totalTransport = 0;
-  
+  let totalSalaire = 0, totalPrime = 0, totalTR = 0, totalTickets = 0, totalRTT = 0, totalCP = 0, totalBrut = 0, totalNet = 0, totalNetFiscal = 0, totalPAS = 0, totalTransport = 0;
+
   for (let m = 1; m <= 12; m++) {
     const key = annee + "-" + String(m).padStart(2, "0");
     const reel = src[key];
-    
-    let salaireBase = (reel && reel.salaire) ? Number(reel.salaire) : null;
-    
-    if (!salaireBase) {
-      const connues = Object.keys(src).filter(k => src[k] && src[k].salaire).sort();
-      let dernierConnu = null;
-      connues.forEach(k => { if (k <= key) dernierConnu = Number(src[k].salaire); });
-      salaireBase = dernierConnu || 2261.76;
+    const estimeSalaire = !(reel && reel.salaire);
+    const apresValorisation = key >= dateValorisation.slice(0,7);
+    let salaireBase = estimeSalaire ? dernierConnu : Number(reel.salaire);
+    let valorisationAppliquee = false;
+    const primeExpInfo = primeExperienceMensuelle(annee, m, config);
+    const tauxValoAnnee = primeExpInfo.taux;
+    if (estimeSalaire && apresValorisation && salaireBase != null) {
+      salaireBase = round2(salaireBase * (1 + tauxValoAnnee/100));
+      valorisationAppliquee = true;
     }
-    
     salaireBase = salaireBase || 0;
-    
-    const primeExp = primeExperienceMensuelle(annee, m, config);
-    const brutEstime = round2(salaireBase * Number(config.ratioBrutSurBase || 1));
-    const netFiscalEstime = round2(brutEstime * Number(config.ratioNetFiscalSurBrut || 1));
-    const pasEstime = round2(netFiscalEstime * Number(config.tauxPAS || 0) / 100);
+    const baseConv = primeExpInfo.base;
+    const primeExperience = primeExpInfo.montant;
+    const brutEstime = round2(salaireBase * Number(config.ratioBrutSurBase||1));
+    const netFiscalRatio = round2(brutEstime * Number(config.ratioNetFiscalSurBrut||1));
+    const netFiscalEstime = (reel && reel.netFiscal) ? Number(reel.netFiscal) : netFiscalRatio;
+    const pasRatio = round2(netFiscalEstime * Number(config.tauxPAS||0) / 100);
+    const pasEstime = (reel && reel.ps) ? Number(reel.ps) : pasRatio;
     const mutuelleConjoint = Number(config.mutuelleConjointMensuel) || 0;
-    const netEstime = round2(brutEstime * Number(config.ratioNetSurBrut || 1) - mutuelleConjoint);
-    const primeTransport = round2(Number(config.abonnementTransportMensuel || 0) * Number(config.remboursementTransportPct || 0) / 100);
-    
-    const joursOuvres = 22;
-    const rttPrisMois = joursPris.filter(j => j.date.slice(0, 7) === key && j.type === "RTT").reduce((s, j) => s + Number(j.duree), 0);
-    const cpPrisMois = joursPris.filter(j => j.date.slice(0, 7) === key && j.type === "CP").reduce((s, j) => s + Number(j.duree), 0);
-    const joursTravailles = Math.max(0, joursOuvres - rttPrisMois - cpPrisMois);
-    const valeurTR = round2(joursTravailles * (Number(config.ticketValeur) || 0) * (Number(config.ticketPartSalarialePct) || 0) / 100);
-    
-    let primeNoel = 0;
-    if (m === Number(config.moisPrimeNoel)) {
-      primeNoel = round2(salaireBase * Number(config.primeNoelPct || 0) / 100);
-    }
-    
-    let primeVacances = 0;
-    if (m === Number(config.moisPrimeVacances)) {
-      primeVacances = round2(salaireBase * Number(config.primeVacancesPct || 0) / 100);
-    }
-    
+    const netEstimeRatio = round2(brutEstime * Number(config.ratioNetSurBrut||1) - mutuelleConjoint);
+    const netPayeReel = (reel && reel.netPaye) ? Number(reel.netPaye) : null;
+    const netEstime = netPayeReel != null ? netPayeReel : netEstimeRatio;
+    const netEstDepuisReel = netPayeReel != null;
+    const dateEffetTransport = config.abonnementTransportDateEffet || "2099-01-01";
+    const abonnementApplicable = key >= dateEffetTransport.slice(0,7) ? Number(config.abonnementTransportSuivant||config.abonnementTransportMensuel||0) : Number(config.abonnementTransportMensuel||0);
+    const primeTransport = round2(abonnementApplicable * Number(config.remboursementTransportPct||0) / 100);
+
+    const joursOuvres = joursOuvresDansMois(annee, m);
+    const rttPrisMois = suiviConges === false ? 0 : joursPris.filter(function(j){ return j.date.slice(0,7)===key && j.type==="RTT"; }).reduce(function(s,j){return s+Number(j.duree);},0);
+    const cpPrisMois = suiviConges === false ? 0 : joursPris.filter(function(j){ return j.date.slice(0,7)===key && j.type==="CP"; }).reduce(function(s,j){return s+Number(j.duree);},0);
+    const estJourOuvre = function(j) { const js = parseISO(j.date).getDay(); return js !== 0 && js !== 6; };
+    const rttPrisOuvre = suiviConges === false ? 0 : joursPris.filter(function(j){ return j.date.slice(0,7)===key && j.type==="RTT" && estJourOuvre(j); }).reduce(function(s,j){return s+Number(j.duree);},0);
+    const cpPrisOuvre = suiviConges === false ? 0 : joursPris.filter(function(j){ return j.date.slice(0,7)===key && j.type==="CP" && estJourOuvre(j); }).reduce(function(s,j){return s+Number(j.duree);},0);
+    const joursTravailles = Math.max(0, joursOuvres - rttPrisOuvre - cpPrisOuvre);
+    const joursDeduits = rttPrisOuvre + cpPrisOuvre;
+    const valeurTR = round2(joursTravailles * (Number(config.ticketValeur)||0) * (Number(config.ticketPartSalarialePct)||0) / 100);
+    const valeurTREmployeur = round2(joursTravailles * (Number(config.ticketValeur)||0) * (100 - (Number(config.ticketPartSalarialePct)||0)) / 100);
+    const totalMois = round2(salaireBase + primeExperience + primeTransport);
+
     moisDetail.push({
-      mois: m, key, salaireBase, primeExp: primeExp.montant, primeNoel, primeVacances,
-      brutEstime, netFiscalEstime, pasEstime, netEstime, primeTransport,
-      joursTravailles, ticketsEstimes: joursTravailles, valeurTR,
-      tauxValoAnnee: primeExp.taux,
+      mois: m, key: key, estimeSalaire: estimeSalaire, apresValorisation: apresValorisation, valorisationAppliquee: valorisationAppliquee,
+      salaireBase: salaireBase, primeExperience: primeExperience, brutEstime: brutEstime, netEstime: netEstime,
+      netFiscalEstime: netFiscalEstime, pasEstime: pasEstime, mutuelleConjoint: mutuelleConjoint, primeTransport: primeTransport,
+      baseConventionnelle: baseConv, tauxValorisationAnnee: tauxValoAnnee,
+      joursOuvres: joursOuvres, rttPris: rttPrisMois, cpPris: cpPrisMois, joursDeduits: joursDeduits, joursTravailles: joursTravailles,
+      ticketsEstimes: joursTravailles, valeurTR: valeurTR, valeurTREmployeur: valeurTREmployeur, totalMois: totalMois,
     });
-    
-    totalSalaire += salaireBase;
-    totalPrime += primeExp.montant;
-    totalPrimeNoel += primeNoel;
-    totalPrimeVacances += primeVacances;
-    totalTR += valeurTR;
-    totalTickets += joursTravailles;
-    totalRTT += rttPrisMois;
-    totalCP += cpPrisMois;
-    totalBrut += brutEstime;
-    totalNet += netEstime;
-    totalNetFiscal += netFiscalEstime;
-    totalPAS += pasEstime;
-    totalTransport += primeTransport;
+    totalSalaire += salaireBase; totalPrime += primeExperience; totalTR += valeurTR; totalTickets += joursTravailles;
+    totalRTT += rttPrisMois; totalCP += cpPrisMois; totalBrut += brutEstime; totalNet += netEstime;
+    totalNetFiscal += netFiscalEstime; totalPAS += pasEstime; totalTransport += primeTransport;
   }
-  
+
+  const primeExpInfoAnnuel = primeExperienceMensuelle(annee, 12, config);
+
   return {
-    annee, moisDetail,
-    totalSalaire: round2(totalSalaire),
-    totalPrime: round2(totalPrime),
-    totalPrimeNoel: round2(totalPrimeNoel),
-    totalPrimeVacances: round2(totalPrimeVacances),
-    totalTR: round2(totalTR),
-    totalTickets: totalTickets,
-    totalRTT, totalCP,
-    totalBrut: round2(totalBrut),
-    totalNet: round2(totalNet),
-    totalNetFiscal: round2(totalNetFiscal),
-    totalPAS: round2(totalPAS),
-    totalTransport: round2(totalTransport),
-    totalGeneral: round2(totalSalaire + totalPrime + totalPrimeNoel + totalPrimeVacances + totalTransport),
+    annee: annee, moisDetail: moisDetail,
+    totalSalaire: round2(totalSalaire), totalPrime: round2(totalPrime), totalTR: round2(totalTR),
+    totalTickets: totalTickets, totalRTT: totalRTT, totalCP: totalCP,
+    totalBrut: round2(totalBrut), totalNet: round2(totalNet),
+    totalNetFiscal: round2(totalNetFiscal), totalPAS: round2(totalPAS), totalTransport: round2(totalTransport),
+    totalGeneral: round2(totalSalaire + totalPrime + totalTransport),
+    dernierConnu: dernierConnu,
+    nbMoisEstimes: moisDetail.filter(function(m){return m.estimeSalaire;}).length,
+    parametres: {
+      tauxPrimeExperience: primeExpInfoAnnuel.taux,
+      valorisationTauxAnnee: tauxValorisationPourAnnee(annee, 12, config),
+      baseConventionnelleClasse3: Number(config.baseConventionnelleClasse3)||0,
+      valorisationConventionDate: dateValorisation,
+      ticketValeur: Number(config.ticketValeur)||0,
+      ticketPartSalarialePct: Number(config.ticketPartSalarialePct)||0,
+      mutuelleConjointMensuel: Number(config.mutuelleConjointMensuel)||0,
+      tauxPAS: Number(config.tauxPAS)||0,
+      abonnementTransportMensuel: Number(config.abonnementTransportMensuel)||0,
+      remboursementTransportPct: Number(config.remboursementTransportPct)||0,
+    },
   };
+}
+
+function archiverAnnee(estimation) {
+  let texte = "ARCHIVE " + estimation.annee + " — Estimation salariale annuelle — Nicolas Jutge\n";
+  texte += "Générée le " + formatDateFR(toLocalISODate(new Date())) + "\n";
+  texte += "========================================================\n\n";
+  texte += "HYPOTHESES ET PARAMETRES\n";
+  texte += "- Salaire de base pour les mois non renseignés : dernière valeur connue (" + formatEUR(estimation.dernierConnu||0) + ")\n";
+  texte += "- Prime d'expérience : base " + formatEUR(estimation.parametres.baseConventionnelleClasse3) + " × taux " + estimation.parametres.tauxPrimeExperience + " % (= taux de revalorisation " + estimation.annee + ")\n";
+  texte += "- Base conventionnelle Classe 3 : " + formatEUR(estimation.parametres.baseConventionnelleClasse3) + ", revalorisée à " + estimation.parametres.valorisationTauxAnnee + " % pour " + estimation.annee + " (mois estimés à partir de " + formatDateFR(estimation.parametres.valorisationConventionDate) + ")\n";
+  texte += "- Titre-restaurant : 1 par jour ouvré réellement travaillé (jours ouvrés - RTT pris - CP pris), valeur " + formatEUR(estimation.parametres.ticketValeur) + ", part salariale " + estimation.parametres.ticketPartSalarialePct + " %\n\n";
+  texte += "DETAIL MENSUEL\n";
+  texte += "Mois          Salaire      Prime exp.   Jours trav.  TR (valeur)   Total mois\n";
+  estimation.moisDetail.forEach(function(m) {
+    const nomMois = MOIS_FR[m.mois-1];
+    texte += nomMois.padEnd(14," ") + formatEUR(m.salaireBase).padEnd(13," ") + formatEUR(m.primeExperience).padEnd(13," ") + String(m.joursTravailles).padEnd(13," ") + formatEUR(m.valeurTR).padEnd(14," ") + formatEUR(m.totalMois) + (m.estimeSalaire ? "  (estimé)" : "") + "\n";
+  });
+  texte += "\n----------------------------------------\n";
+  texte += "Total salaire annuel : " + formatEUR(estimation.totalSalaire) + "\n";
+  texte += "Total prime d'expérience : " + formatEUR(estimation.totalPrime) + "\n";
+  texte += "Total général (salaire + prime) : " + formatEUR(estimation.totalGeneral) + "\n";
+  texte += "Total titres-restaurant : " + formatEUR(estimation.totalTR) + " (" + estimation.totalTickets + " jours travaillés)\n";
+  texte += "Brut annuel estimé : " + formatEUR(estimation.totalBrut) + " — Net estimé : " + formatEUR(estimation.totalNet) + "\n";
+  texte += "Net fiscal estimé : " + formatEUR(estimation.totalNetFiscal) + " — PAS estimé : " + formatEUR(estimation.totalPAS) + "\n";
+  texte += "Mutuelle conjoint (annuel) : " + formatEUR(estimation.parametres.mutuelleConjointMensuel * 12) + " — Prime transport (annuel) : " + formatEUR(estimation.totalTransport) + "\n";
+  texte += "Prime de vacances : " + (estimation.primeVacances != null ? formatEUR(estimation.primeVacances) : "à renseigner") + " — Prime de Noël : " + (estimation.primeNoel != null ? formatEUR(estimation.primeNoel) : "à renseigner") + "\n";
+  texte += "Total RTT pris : " + estimation.totalRTT + " j — Total CP pris : " + estimation.totalCP + " j\n";
+  texte += "Mois estimés (données manquantes) : " + estimation.nbMoisEstimes + " / 12\n";
+  if (estimation.rttMensuel) {
+    texte += "\nRTT MENSUEL\nMois          Acquis   Pris     Solde    Cumulé\n";
+    estimation.rttMensuel.forEach(function(l) {
+      texte += MOIS_FR[l.mois-1].padEnd(14," ") + String(l.acquis).padEnd(9," ") + String(l.pris).padEnd(9," ") + String(l.soldeMois).padEnd(9," ") + String(l.soldeCumule) + "\n";
+    });
+  }
+  const blob = new Blob([texte], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "archive-" + estimation.annee + "-nicolas.txt";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function envoyerPeriodesParMail(periodes) {
+  const sujet = encodeURIComponent("Périodes sans RTT/CP possible");
+  const lignes = periodes.map(function(p) {
+    return "- " + formatDateFR(p.dateDebut) + " au " + formatDateFR(p.dateFin) + (p.label ? " (" + p.label + ")" : "");
+  });
+  const corps = encodeURIComponent(
+    (periodes.length ? "Voici les périodes durant lesquelles il n'est pas possible de poser des RTT/CP :\n\n" + lignes.join("\n") : "Aucune période bloquée définie pour le moment.")
+  );
+  window.location.href = "mailto:?subject=" + sujet + "&body=" + corps;
+}
+function depasseRTTConsecutifs(nouvelleDate, joursExistants, max) {
+  const set = {};
+  joursExistants.filter(j => j.type === "RTT").forEach(j => { set[j.date] = true; });
+  set[nouvelleDate] = true;
+  const dates = Object.keys(set).sort();
+  const idx = dates.indexOf(nouvelleDate);
+  let run = 1;
+  for (let i = idx-1; i >= 0 && joursAdjacents(dates[i], dates[i+1]); i--) run++;
+  for (let i = idx+1; i < dates.length && joursAdjacents(dates[i-1], dates[i]); i++) run++;
+  return run > max;
+}
+function exporterICS(joursPris) {
+  const pad = n => String(n).padStart(2,"0");
+  const toICSDate = s => s.replace(/-/g,"");
+  const nextDay = s => { const d = parseISO(s); d.setDate(d.getDate()+1); return toICSDate(toLocalISODate(d)); };
+  const now = new Date();
+  const dtstamp = now.getFullYear()+pad(now.getMonth()+1)+pad(now.getDate())+"T"+pad(now.getHours())+pad(now.getMinutes())+pad(now.getSeconds())+"Z";
+  let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//SuiviSalaireRTT//FR\r\nCALSCALE:GREGORIAN\r\n";
+  joursPris.forEach(j => {
+    ics += "BEGIN:VEVENT\r\n";
+    ics += "UID:" + j.id + "@suivi-salaire-rtt\r\n";
+    ics += "DTSTAMP:" + dtstamp + "\r\n";
+    ics += "DTSTART;VALUE=DATE:" + toICSDate(j.date) + "\r\n";
+    ics += "DTEND;VALUE=DATE:" + nextDay(j.date) + "\r\n";
+    ics += "SUMMARY:" + j.type + (Number(j.duree)===0.5 ? " (demi-journée)" : "") + (j.note ? " - " + j.note : "") + "\r\n";
+    ics += "END:VEVENT\r\n";
+  });
+  ics += "END:VCALENDAR\r\n";
+  const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "rtt-cp.ics";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 const STORAGE_KEY = "suivi_salaire_data";
@@ -239,147 +433,393 @@ function saveState(nextState) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState)); return true; } catch (e) { return false; }
 }
 
+const BINCONFIG_KEY = "suivi_salaire_jsonbin_config";
+function loadBinConfig() {
+  try {
+    const raw = localStorage.getItem(BINCONFIG_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+function saveBinConfig(cfg) {
+  try {
+    if (cfg) localStorage.setItem(BINCONFIG_KEY, JSON.stringify(cfg));
+    else localStorage.removeItem(BINCONFIG_KEY);
+  } catch (e) {}
+}
+
+const JSONBIN_BASE = "https://api.jsonbin.io/v3/b";
+async function jsonBinRead(cfg) {
+  const res = await fetch(JSONBIN_BASE + "/" + cfg.binId + "/latest", { headers: { "X-Master-Key": cfg.apiKey } });
+  if (!res.ok) throw new Error("read failed");
+  const data = await res.json();
+  return data.record;
+}
+async function jsonBinWrite(cfg, record) {
+  const res = await fetch(JSONBIN_BASE + "/" + cfg.binId, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", "X-Master-Key": cfg.apiKey },
+    body: JSON.stringify(record),
+  });
+  if (!res.ok) throw new Error("write failed");
+  return res.json();
+}
+async function jsonBinCreate(apiKey, record) {
+  const res = await fetch(JSONBIN_BASE, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Master-Key": apiKey, "X-Bin-Name": "suivi-salaire" },
+    body: JSON.stringify(record),
+  });
+  if (!res.ok) throw new Error("create failed");
+  const data = await res.json();
+  return data.metadata.id;
+}
+
+function TrashIcon({ size = 16, color = "currentColor" }) {
+  return (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="3 6 5 6 21 6"></polyline>
+    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+    <path d="M10 11v6"></path><path d="M14 11v6"></path>
+  </svg>);
+}
+function EditIcon({ size = 16, color = "currentColor" }) {
+  return (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+  </svg>);
+}
+function MailIcon({ size = 14, color = "currentColor" }) {
+  return (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+    <polyline points="22 6 12 13 2 6"></polyline>
+  </svg>);
+}
+function DownloadIcon({ size = 16, color = "currentColor" }) {
+  return (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+    <polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line>
+  </svg>);
+}
+function AlertIcon({ size = 13, color = "currentColor" }) {
+  return (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+    <line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line>
+  </svg>);
+}
+
 function Card({ children, className = "", dark = false, style = {} }) {
   const base = dark ? { backgroundColor: COLORS.ink, color: "#fff" } : { backgroundColor: "#fff", color: COLORS.ink };
   return (<div className={"rounded-2xl border p-4 " + (dark ? "border-transparent" : "border-stone-200") + " " + className} style={{ ...base, ...style }}>{children}</div>);
 }
-
+function NumberField({ label, value, onChange, step = "0.01", suffix }) {
+  return (<label className="block">
+    <span className="text-xs text-stone-500">{label}</span>
+    <div className="flex items-center gap-2 mt-1">
+      <input type="number" step={step} value={value}
+        onChange={e => onChange(e.target.value === "" ? "" : Number(e.target.value))}
+        className="font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-400" />
+      {suffix && <span className="text-xs text-stone-400">{suffix}</span>}
+    </div>
+  </label>);
+}
+function TextDateField({ label, value, onChange }) {
+  return (<label className="block">
+    <span className="text-xs text-stone-500">{label}</span>
+    <input type="date" value={value} onChange={e => onChange(e.target.value)}
+      className="font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-stone-400" />
+  </label>);
+}
 function Row({ children, index = 0 }) {
   return (<div className="flex items-center justify-between rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: index % 2 === 1 ? COLORS.stripe : "transparent" }}>{children}</div>);
+}
+function Warning({ children }) {
+  return (<p className="col-span-2 text-xs rounded-lg px-3 py-2 flex items-center gap-1.5" style={{ backgroundColor: COLORS.warnBg, color: COLORS.loss }}>
+    <AlertIcon color={COLORS.loss} /> {children}
+  </p>);
+}
+
+function SyncPanel({ binConfig, onConnect, onDisconnect, currentState, onClose }) {
+  const [apiKey, setApiKey] = useState("");
+  const [binId, setBinId] = useState("");
+  const [mode, setMode] = useState("create");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleConnect(e) {
+    e.preventDefault();
+    if (!apiKey.trim()) { setError("Clé API requise."); return; }
+    setBusy(true); setError("");
+    try {
+      if (mode === "create") {
+        const id = await jsonBinCreate(apiKey.trim(), currentState);
+        onConnect({ apiKey: apiKey.trim(), binId: id });
+      } else {
+        if (!binId.trim()) { setError("Bin ID requis."); setBusy(false); return; }
+        await jsonBinRead({ apiKey: apiKey.trim(), binId: binId.trim() });
+        onConnect({ apiKey: apiKey.trim(), binId: binId.trim() });
+      }
+      onClose();
+    } catch (err) {
+      setError("Connexion impossible. Vérifie ta clé API" + (mode === "existing" ? " et le Bin ID." : "."));
+    }
+    setBusy(false);
+  }
+
+  if (binConfig) {
+    return (
+      <Card>
+        <p className="text-sm font-medium mb-1">Synchronisation cloud active</p>
+        <p className="text-xs text-stone-400 mb-3 font-mono">Bin ID : {binConfig.binId}</p>
+        <div className="flex gap-2">
+          <button onClick={() => { onDisconnect(); onClose(); }} className="text-xs" style={{ color: COLORS.loss }}>Déconnecter</button>
+          <button onClick={onClose} className="text-xs" style={{ color: COLORS.accent }}>Fermer</button>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <p className="text-sm font-medium mb-1">Synchroniser entre appareils (JSONBin)</p>
+      <p className="text-xs text-stone-400 mb-3">Optionnel — tes données restent aussi enregistrées localement.</p>
+      <div className="flex gap-2 mb-3">
+        <button type="button" onClick={() => setMode("create")} className="flex-1 py-2 rounded-lg text-sm"
+          style={{ backgroundColor: mode === "create" ? COLORS.ink : COLORS.stripe, color: mode === "create" ? "#fff" : COLORS.ink }}>Créer un bin</button>
+        <button type="button" onClick={() => setMode("existing")} className="flex-1 py-2 rounded-lg text-sm"
+          style={{ backgroundColor: mode === "existing" ? COLORS.ink : COLORS.stripe, color: mode === "existing" ? "#fff" : COLORS.ink }}>J'ai déjà un bin</button>
+      </div>
+      <form onSubmit={handleConnect} className="space-y-3">
+        <label className="block">
+          <span className="text-xs text-stone-500">Clé API JSONBin (X-Master-Key)</span>
+          <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)}
+            className="font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" />
+        </label>
+        {mode === "existing" && (
+          <label className="block">
+            <span className="text-xs text-stone-500">Bin ID</span>
+            <input type="text" value={binId} onChange={e => setBinId(e.target.value)}
+              className="font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" />
+          </label>
+        )}
+        {error && <p className="text-xs" style={{ color: COLORS.loss }}>{error}</p>}
+        <div className="flex gap-2">
+          <button type="submit" disabled={busy} className="flex-1 text-white rounded-lg py-2 text-sm font-medium disabled:opacity-50" style={{ backgroundColor: COLORS.ink }}>
+            {busy ? "Connexion…" : (mode === "create" ? "Créer et connecter" : "Connecter")}
+          </button>
+          <button type="button" onClick={onClose} className="px-4 rounded-lg text-sm" style={{ backgroundColor: COLORS.stripe, color: COLORS.ink }}>Annuler</button>
+        </div>
+      </form>
+      <p className="text-xs text-stone-400 mt-3">Pas de compte ? Crée-en un gratuitement sur jsonbin.io, copie ta X-Master-Key depuis ton tableau de bord.</p>
+    </Card>
+  );
 }
 
 function App() {
   const [state, setState] = useState(loadState);
+  const [binConfig, setBinConfigState] = useState(loadBinConfig);
+  const [showSync, setShowSync] = useState(false);
+  const [syncStatus, setSyncStatus] = useState("idle"); // idle | syncing | synced | error
   const [tab, setTab] = useState("dashboard");
+  const [confirmReset, setConfirmReset] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  useEffect(function() {
+    if (!binConfig) return;
+    setSyncStatus("syncing");
+    (async function() {
+      try {
+        const record = await jsonBinRead(binConfig);
+        const merged = { ...DEFAULT_STATE, ...record, config: { ...DEFAULT_STATE.config, ...(record.config || {}) } };
+        setState(merged);
+        saveState(merged);
+        setSyncStatus("synced");
+      } catch (e) {
+        setSyncStatus("error");
+      }
+    })();
+  }, []);
 
   function persist(nextState) {
     setState(nextState);
     setSaving(true);
     saveState(nextState);
+    if (binConfig) {
+      setSyncStatus("syncing");
+      jsonBinWrite(binConfig, nextState)
+        .then(() => setSyncStatus("synced"))
+        .catch(() => setSyncStatus("error"));
+    }
     setTimeout(() => setSaving(false), 400);
   }
 
-  function updateConfig(patch) { persist({ ...state, config: { ...state.config, ...patch } }); }
+  function connecterSync(cfg) {
+    setBinConfigState(cfg);
+    saveBinConfig(cfg);
+    setSyncStatus("synced");
+  }
+  function deconnecterSync() {
+    setBinConfigState(null);
+    saveBinConfig(null);
+    setSyncStatus("idle");
+  }
 
-  const nicolas = state.personnes.find(p => p.id === "nicolas") || state.personnes[0];
-  const estimation2026 = useMemo(() => estimerAnnee(nicolas, 2026, state.joursPris || [], state.config), [nicolas, state.joursPris, state.config]);
+  function updateConfig(patch) { persist({ ...state, config: { ...state.config, ...patch } }); }
+  function updatePersonnes(next) { persist({ ...state, personnes: next }); }
+  function ajouterJour(j) {
+    const next = [...state.joursPris, { id: uid(), ...j }].sort((a,b) => a.date.localeCompare(b.date));
+    persist({ ...state, joursPris: next });
+  }
+  function supprimerJour(id) { persist({ ...state, joursPris: state.joursPris.filter(j => j.id !== id) }); }
+  function modifierJour(id, patch) {
+    const next = state.joursPris.map(function(j) { return j.id === id ? { ...j, ...patch } : j; }).sort((a,b) => a.date.localeCompare(b.date));
+    persist({ ...state, joursPris: next });
+  }
+  function ajouterJoursPlage(dates, type, duree, note) {
+    const existants = {};
+    state.joursPris.forEach(function(j) { existants[j.date + "|" + j.type] = true; });
+    const nouveaux = dates.filter(function(d) { return !existants[d + "|" + type]; })
+      .map(function(d) { return { id: uid(), date: d, type: type, duree: duree, note: note }; });
+    if (!nouveaux.length) return;
+    const next = [...state.joursPris, ...nouveaux].sort((a,b) => a.date.localeCompare(b.date));
+    persist({ ...state, joursPris: next });
+  }
+  function ajouterPeriode(per) {
+    const next = [...state.periodesBloquees, { id: uid(), ...per }].sort((a,b) => a.dateDebut.localeCompare(b.dateDebut));
+    persist({ ...state, periodesBloquees: next });
+  }
+  function supprimerPeriode(id) { persist({ ...state, periodesBloquees: state.periodesBloquees.filter(p => p.id !== id) }); }
+  function modifierPeriode(id, patch) {
+    const next = state.periodesBloquees.map(function(p) { return p.id === id ? { ...p, ...patch } : p; }).sort((a,b) => a.dateDebut.localeCompare(b.dateDebut));
+    persist({ ...state, periodesBloquees: next });
+  }
+  function ajouterPersonne() { updatePersonnes([...state.personnes, { id: uid(), nom: "", dateEntree: "", entreesMensuelles: {} }]); }
+  function supprimerPersonne(id) { if (id === "nicolas") return; updatePersonnes(state.personnes.filter(p => p.id !== id)); }
+  function updatePersonneChamp(id, patch) { updatePersonnes(state.personnes.map(p => p.id === id ? { ...p, ...patch } : p)); }
+
+  function ajouterArchive(estimation) {
+    const sansAncienne = state.archives.filter(function(a) { return a.annee !== estimation.annee; });
+    const next = [...sansAncienne, { annee: estimation.annee, dateArchivage: toLocalISODate(new Date()), estimation: estimation }].sort((a,b) => b.annee - a.annee);
+    persist({ ...state, archives: next });
+  }
+  function supprimerArchive(annee) {
+    persist({ ...state, archives: state.archives.filter(function(a) { return a.annee !== annee; }) });
+  }
+
+  function reinitialiser() {
+    if (!confirmReset) { setConfirmReset(true); setTimeout(() => setConfirmReset(false), 3000); return; }
+    setConfirmReset(false);
+    persist(DEFAULT_STATE);
+  }
+
+  const today = useMemo(() => new Date(), []);
+  const nicolas = state.personnes.filter(p => p.id === "nicolas")[0] || state.personnes[0];
+  const anneesNicolas = (nicolas && nicolas.dateEntree) ? anneesEcoulees(parseISO(nicolas.dateEntree), today) : 0;
+  const bonusCP = bonusAncienneteJours(anneesNicolas);
+
+  const debutRTT = new Date(today.getFullYear(), 0, 1);
+  const rttAcquis = accrualDepuis(state.config.rttBaseAnnuel, debutRTT, today);
+  const rttPris = state.joursPris.filter(j => j.type === "RTT" && j.date >= toLocalISODate(debutRTT)).reduce((s,j) => s + Number(j.duree), 0);
+  const soldeRTT = round2(rttAcquis - rttPris);
+
+  const debutCycleCP = debutCycle(state.config.cpCycleDebut, today);
+  const cpAcquisFixe = round2(Number(state.config.cpBaseAnnuel) + bonusCP);
+  const cpPris = state.joursPris.filter(j => j.type === "CP" && j.date >= toLocalISODate(debutCycleCP)).reduce((s,j) => s + Number(j.duree), 0);
+  const soldeCP = round2(cpAcquisFixe - cpPris);
+  const cpEnCours = accrualDepuis(state.config.cpBaseAnnuel, new Date(today.getFullYear(), 0, 1), today);
+  const conges = { soldeRTT, soldeCP, rttAcquis, rttPris, cpAcquisFixe, cpPris, cpEnCours, debutCycleCP };
+
+  function primeMontant(pct, mois, annee) {
+    const key = annee + "-" + String(mois).padStart(2, "0");
+    const entree = (nicolas && nicolas.entreesMensuelles) ? nicolas.entreesMensuelles[key] : null;
+    const s = entree ? entree.salaire : null;
+    if (!s) return null;
+    return round2(Number(s) * pct / 100);
+  }
+
+  const anneeActuelle = today.getFullYear();
+  const prochaines = useMemo(function() {
+    const items = [];
+    [anneeActuelle, anneeActuelle+1].forEach(function(an) {
+      items.push({ date: new Date(an, state.config.moisPrimeVacances-1, 1), label: "Prime de vacances", montant: primeMontant(state.config.primeVacancesPct, state.config.moisPrimeVacances, an) });
+      items.push({ date: new Date(an, state.config.moisPrimeNoel-1, 1), label: "Prime de Noël", montant: primeMontant(state.config.primeNoelPct, state.config.moisPrimeNoel, an) });
+    });
+    const debutMois = new Date(today.getFullYear(), today.getMonth(), 1);
+    return items.filter(i => i.date >= debutMois).sort((a,b) => a.date - b.date).slice(0,3);
+  }, [state.config, state.personnes, anneeActuelle]);
+
+  const dernierSalaire = useMemo(function() {
+    const src = (nicolas && nicolas.entreesMensuelles) ? nicolas.entreesMensuelles : {};
+    const entries = Object.keys(src).filter(function(k) { return src[k] && src[k].salaire; }).sort();
+    if (!entries.length) return null;
+    const key = entries[entries.length-1];
+    return [key, src[key]];
+  }, [nicolas]);
 
   const tabs = [
     { id: "dashboard", label: "Accueil" },
     { id: "salaires", label: "Salaires" },
     { id: "estimation", label: "Estimation" },
+    { id: "primes", label: "Primes" },
+    { id: "conges", label: "RTT & CP" },
   ];
 
   return (
     <div className="min-h-screen pb-24" style={{ backgroundColor: COLORS.paper, color: COLORS.ink }}>
       <header className="px-5 pt-6 pb-5" style={{ backgroundColor: COLORS.ink, color: "#fff" }}>
-        <h1 className="font-display text-2xl" style={{ fontWeight: 600 }}>Salaire, RTT & Congés</h1>
-        <p className="text-xs mt-1" style={{ color: "#8FA69B" }}>Nicolas Jutge — Classe 3</p>
+        <div className="flex items-start justify-between">
+          <div className="flex items-start gap-3">
+            <div className="rounded-xl p-2 shrink-0 flex items-center justify-center" style={{ backgroundColor: "#2A3A34", width: 36, height: 36 }}>
+              <span style={{ color: COLORS.gain, fontSize: 18, fontWeight: 600 }}>€</span>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-widest" style={{ color: "#8FA69B" }}>Suivi personnel</p>
+              <h1 className="font-display text-2xl mt-1" style={{ fontWeight: 600 }}>Salaire, RTT & Congés</h1>
+              <p className="text-sm mt-1" style={{ color: "#B7C4BC" }}>Nicolas Jutge — Conseiller Assurance Réseau, Classe 3</p>
+            </div>
+          </div>
+          <div className="flex flex-col items-end gap-1.5 shrink-0">
+            <button onClick={() => setShowSync(!showSync)} className="text-xs" style={{ color: "#8FA69B" }}>
+              {binConfig ? (syncStatus === "error" ? "sync ⚠" : "sync ✓") : "synchroniser"}
+            </button>
+            <button onClick={reinitialiser} className="text-xs" style={{ color: "#8FA69B" }}>{confirmReset ? "confirmer ?" : "réinitialiser"}</button>
+          </div>
+        </div>
       </header>
 
+      <div className="px-4 pt-3">
+        <p className="text-xs text-stone-400">
+          {binConfig ? "Synchronisé avec ton bin JSONBin (+ copie locale sur cet appareil)." : "Données enregistrées localement sur cet appareil et ce navigateur."}
+        </p>
+        {showSync && (
+          <div className="mt-2">
+            <SyncPanel binConfig={binConfig} onConnect={connecterSync} onDisconnect={deconnecterSync} currentState={state} onClose={() => setShowSync(false)} />
+          </div>
+        )}
+      </div>
+
       <main className="px-4 pt-5 max-w-xl mx-auto">
-        {tab === "dashboard" && (
-          <div className="space-y-4">
-            <Card dark>
-              <p className="text-xs uppercase tracking-wide" style={{ color: "#8FA69B" }}>Référence février 2026</p>
-              <div className="font-mono grid grid-cols-2 gap-2 mt-2 text-sm">
-                <div><p className="text-xs text-stone-400">Net payé</p><p className="font-semibold">1 776,06 €</p></div>
-                <div><p className="text-xs text-stone-400">Net fiscal</p><p className="font-semibold">2 123,73 €</p></div>
-                <div><p className="text-xs text-stone-400">PAS</p><p className="font-semibold">46,72 €</p></div>
-                <div><p className="text-xs text-stone-400">Prime exp.</p><p className="font-semibold">188,03 €</p></div>
-                <div><p className="text-xs text-stone-400">TR</p><p className="font-semibold">18</p></div>
-              </div>
-            </Card>
-            <Card>
-              <p className="text-sm font-medium mb-3">Récapitulatif 2026</p>
-              <div className="space-y-1">
-                <Row index={0}><span>Salaire</span><span className="font-mono">{formatEUR(estimation2026.totalSalaire)}</span></Row>
-                <Row index={1}><span>Prime exp.</span><span className="font-mono">{formatEUR(estimation2026.totalPrime)}</span></Row>
-                <Row index={2}><span>Prime Noël</span><span className="font-mono">{formatEUR(estimation2026.totalPrimeNoel)}</span></Row>
-                <Row index={3}><span>Prime vacances</span><span className="font-mono">{formatEUR(estimation2026.totalPrimeVacances)}</span></Row>
-                <Row index={4}><span>TR (nombre)</span><span className="font-mono">{estimation2026.totalTickets}</span></Row>
-                <Row index={5}><span>Net annuel</span><span className="font-mono font-semibold">{formatEUR(estimation2026.totalNet)}</span></Row>
-              </div>
-            </Card>
-          </div>
-        )}
-
-        {tab === "salaires" && (
-          <div className="space-y-4">
-            <Card>
-              <p className="text-sm font-medium mb-3">Bulletins réels — Nicolas</p>
-              {HISTORIQUE.map((b, i) => (
-                <Card key={i} style={{ backgroundColor: COLORS.stripe }} className="mb-2">
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-sm font-medium">{b.periode}</p>
-                    <p className="text-xs text-stone-500">{formatDateFR(b.paiement)}</p>
-                  </div>
-                  <div className="font-mono grid grid-cols-2 gap-y-1.5 text-xs">
-                    <p>Salaire réf.</p><p className="text-right">{formatEUR(b.salaireRef)}</p>
-                    <p>Net payé</p><p className="text-right font-semibold">{formatEUR(b.netPaye)}</p>
-                    <p>Net fiscal</p><p className="text-right">{formatEUR(b.netFiscal)}</p>
-                    <p>PAS</p><p className="text-right">{formatEUR(b.pas)}</p>
-                    <p>Prime exp.</p><p className="text-right">{formatEUR(b.primeExp)}</p>
-                    <p>TR (nombre)</p><p className="text-right">{b.tr}</p>
-                  </div>
-                  {b.note && <p className="text-xs mt-2 pt-2 border-t border-stone-300" style={{ color: COLORS.gold }}>{b.note}</p>}
-                </Card>
-              ))}
-            </Card>
-            <Card>
-              <p className="text-sm font-medium mb-3">Autres personnes</p>
-              <div className="space-y-2">
-                {state.personnes.filter(p => p.id !== "nicolas").map(p => (
-                  <div key={p.id} className="p-2 rounded-lg" style={{ backgroundColor: COLORS.stripe }}>
-                    <p className="text-sm font-medium">{p.nom || "(sans nom)"}</p>
-                    <p className="text-xs text-stone-400">ID: {p.id}</p>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          </div>
-        )}
-
+        {tab === "dashboard" && <Dashboard dernierSalaire={dernierSalaire} soldeRTT={soldeRTT} soldeCP={soldeCP} prochaines={prochaines} today={today} />}
+        {tab === "salaires" && <SalairesTab personnes={state.personnes} updatePersonnes={updatePersonnes} config={state.config} updateConfig={updateConfig} joursPris={state.joursPris || []} />}
         {tab === "estimation" && (
-          <div className="space-y-4">
-            <Card>
-              <p className="text-sm font-medium mb-2">Estimation 2026</p>
-              <div className="space-y-1">
-                <Row index={0}><span>Salaire</span><span className="font-mono">{formatEUR(estimation2026.totalSalaire)}</span></Row>
-                <Row index={1}><span>Prime exp. (9%→10,5%)</span><span className="font-mono">{formatEUR(estimation2026.totalPrime)}</span></Row>
-                <Row index={2}><span>Prime Noël</span><span className="font-mono">{formatEUR(estimation2026.totalPrimeNoel)}</span></Row>
-                <Row index={3}><span>Prime vacances</span><span className="font-mono">{formatEUR(estimation2026.totalPrimeVacances)}</span></Row>
-                <Row index={4}><span>TR (nombre)</span><span className="font-mono">{estimation2026.totalTickets}</span></Row>
-                <Row index={5}><span>Brut</span><span className="font-mono">{formatEUR(estimation2026.totalBrut)}</span></Row>
-                <Row index={6}><span>Net</span><span className="font-mono font-semibold">{formatEUR(estimation2026.totalNet)}</span></Row>
-                <Row index={7}><span>Net fiscal</span><span className="font-mono">{formatEUR(estimation2026.totalNetFiscal)}</span></Row>
-                <Row index={8}><span>PAS</span><span className="font-mono">{formatEUR(estimation2026.totalPAS)}</span></Row>
-              </div>
-            </Card>
-            <Card>
-              <p className="text-sm font-medium mb-2">Détail mensuel 2026</p>
-              <div className="text-xs space-y-1 font-mono">
-                <div className="flex justify-between px-2 py-1 border-b pb-1">
-                  <span>Mois</span><span>Salaire</span><span>Prime</span><span>TR</span>
-                </div>
-                {estimation2026.moisDetail.map((m, i) => (
-                  <div key={i} className="flex justify-between px-2 py-1" style={{ backgroundColor: i % 2 === 1 ? COLORS.stripe : "transparent" }}>
-                    <span>{MOIS_FR[m.mois-1].slice(0,3)}</span>
-                    <span>{formatEUR(m.salaireBase)}</span>
-                    <span>{formatEUR(m.primeExp)} ({m.tauxValoAnnee}%)</span>
-                    <span>{m.ticketsEstimes}</span>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          </div>
+          <EstimationTab nicolas={nicolas} joursPris={state.joursPris || []} config={state.config} updateConfig={updateConfig}
+            archives={state.archives || []} ajouterArchive={ajouterArchive} supprimerArchive={supprimerArchive} anneeActuelle={anneeActuelle} primeMontant={primeMontant} />
+        )}
+        {tab === "primes" && <PrimesTab config={state.config} updateConfig={updateConfig} anneeActuelle={anneeActuelle} primeMontant={primeMontant} />}
+        {tab === "conges" && (
+          <CongesTab
+            config={state.config} updateConfig={updateConfig}
+            joursPris={state.joursPris} ajouterJoursPlage={ajouterJoursPlage} modifierJour={modifierJour} supprimerJour={supprimerJour}
+            periodesBloquees={state.periodesBloquees} ajouterPeriode={ajouterPeriode} modifierPeriode={modifierPeriode} supprimerPeriode={supprimerPeriode}
+            personnes={state.personnes} ajouterPersonne={ajouterPersonne} supprimerPersonne={supprimerPersonne} updatePersonne={updatePersonneChamp}
+            conges={conges} today={today}
+          />
         )}
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-stone-200">
-        <div className="max-w-xl mx-auto grid grid-cols-3">
-          {tabs.map(t => (<button key={t.id} onClick={() => setTab(t.id)} className="py-3 text-xs font-medium" style={{ color: tab === t.id ? COLORS.ink : "#A8A29E" }}>{t.label}</button>))}
+        <div className="max-w-xl mx-auto grid grid-cols-5">
+          {tabs.map(function(t) {
+            return (<button key={t.id} onClick={() => setTab(t.id)} className="py-3 text-xs font-medium" style={{ color: tab === t.id ? COLORS.ink : "#A8A29E" }}>{t.label}</button>);
+          })}
         </div>
       </nav>
 
@@ -388,7 +828,800 @@ function App() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+function Dashboard({ dernierSalaire, soldeRTT, soldeCP, prochaines, today }) {
+  return (
+    <div className="space-y-4">
+      <Card dark>
+        <p className="text-xs uppercase tracking-wide" style={{ color: "#8FA69B" }}>Dernier salaire renseigné (Nicolas)</p>
+        {dernierSalaire ? (
+          <>
+            <p className="font-display font-mono text-3xl mt-1">{formatEUR(dernierSalaire[1].salaire)}</p>
+            <p className="text-xs mt-2" style={{ color: "#8FA69B" }}>{formatMoisAnnee(dernierSalaire[0])}</p>
+          </>
+        ) : (<p className="text-sm mt-2" style={{ color: "#8FA69B" }}>Renseigne un salaire dans l'onglet Salaires.</p>)}
+      </Card>
+      <div className="grid grid-cols-2 gap-3">
+        <Card><p className="text-xs text-stone-500">Solde RTT</p><p className="font-mono text-2xl mt-1">{formatJours(soldeRTT)}</p><p className="text-xs text-stone-400">jours</p></Card>
+        <Card><p className="text-xs text-stone-500">Solde CP</p><p className="font-mono text-2xl mt-1">{formatJours(soldeCP)}</p><p className="text-xs text-stone-400">jours</p></Card>
+      </div>
+      <Card>
+        <p className="text-sm font-medium mb-3">Prochaines échéances</p>
+        <div className="space-y-1">
+          {prochaines.map(function(p, i) {
+            return (<Row key={i} index={i}>
+              <div><p className="text-stone-800">{p.label}</p><p className="text-xs text-stone-400">{formatDateFR(toLocalISODate(p.date))}</p></div>
+              <p className="font-mono font-medium" style={{ color: COLORS.gain }}>{p.montant != null ? formatEUR(p.montant) : "à renseigner"}</p>
+            </Row>);
+          })}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function SalairesTab({ personnes, updatePersonnes, config, updateConfig, joursPris }) {
+  const [personneId, setPersonneId] = useState(personnes[0].id);
+  const [annee, setAnnee] = useState(new Date().getFullYear());
+  const personne = personnes.filter(p => p.id === personneId)[0] || personnes[0];
+
+  function updateMois(mois, champ, valeur) {
+    const key = annee + "-" + String(mois).padStart(2, "0");
+    const next = personnes.map(function(p) {
+      if (p.id !== personneId) return p;
+      const entreesMensuelles = { ...p.entreesMensuelles };
+      entreesMensuelles[key] = { ...(entreesMensuelles[key] || {}) };
+      entreesMensuelles[key][champ] = valeur;
+      return { ...p, entreesMensuelles };
+    });
+    updatePersonnes(next);
+  }
+
+  const estimationNicolas = personneId === "nicolas" ? estimerAnnee(personne, annee, joursPris, config) : null;
+
+  const totaux = { netPaye: 0, salaire: 0, netFiscal: 0, ps: 0 };
+  for (let m = 1; m <= 12; m++) {
+    const key = annee + "-" + String(m).padStart(2, "0");
+    const e = personne.entreesMensuelles[key];
+    if (e) { totaux.netPaye += Number(e.netPaye) || 0; totaux.salaire += Number(e.salaire) || 0; totaux.netFiscal += Number(e.netFiscal) || 0; totaux.ps += Number(e.ps) || 0; }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {personnes.map(function(p) {
+          return (<button key={p.id} onClick={() => setPersonneId(p.id)} className="px-3 py-1.5 rounded-full text-sm whitespace-nowrap"
+            style={{ backgroundColor: personneId === p.id ? COLORS.ink : COLORS.stripe, color: personneId === p.id ? "#fff" : COLORS.ink }}>
+            {p.nom || "(sans nom)"}{p.id === "nicolas" ? " 👤" : ""}
+          </button>);
+        })}
+      </div>
+
+      <Card>
+        <div className="flex items-center justify-between mb-3">
+          <button onClick={() => setAnnee(annee-1)} className="px-3 py-1 text-sm rounded-lg" style={{ backgroundColor: COLORS.stripe }}>◀</button>
+          <p className="font-display text-lg">{annee}</p>
+          <button onClick={() => setAnnee(annee+1)} className="px-3 py-1 text-sm rounded-lg" style={{ backgroundColor: COLORS.stripe }}>▶</button>
+        </div>
+        {personneId === "nicolas" && <p className="text-xs text-stone-400 mb-2">Champs vides = valeur estimée automatiquement (affichée en filigrane). Saisis le bulletin réel pour la remplacer.</p>}
+        <div className="grid grid-cols-5 gap-1 text-xs text-stone-500 mb-1 px-1">
+          <span>Mois</span><span>💰 Net payé</span><span>Salaire</span><span>🧾 N.fiscal</span><span>📉 PAS</span>
+        </div>
+        <div className="space-y-1">
+          {MOIS_FR.map(function(m, i) {
+            const mois = i + 1;
+            const key = annee + "-" + String(mois).padStart(2, "0");
+            const e = personne.entreesMensuelles[key] || {};
+            const estMois = estimationNicolas ? estimationNicolas.moisDetail[i] : null;
+            return (
+              <div key={mois} className="grid grid-cols-5 gap-1 items-center rounded-lg px-1 py-1" style={{ backgroundColor: i % 2 === 1 ? COLORS.stripe : "transparent" }}>
+                <span className="text-xs font-mono capitalize">{m.slice(0,3)}</span>
+                <input type="number" step="0.01" value={e.netPaye === undefined ? "" : e.netPaye}
+                  placeholder={estMois ? String(estMois.netEstime) : "—"}
+                  onChange={ev => updateMois(mois, "netPaye", ev.target.value === "" ? "" : Number(ev.target.value))}
+                  className="font-mono w-full border border-stone-300 rounded px-1 py-1 text-xs" />
+                <input type="number" step="0.01" value={e.salaire === undefined ? "" : e.salaire}
+                  placeholder={estMois ? String(estMois.salaireBase) : "—"}
+                  onChange={ev => updateMois(mois, "salaire", ev.target.value === "" ? "" : Number(ev.target.value))}
+                  className="font-mono w-full border border-stone-300 rounded px-1 py-1 text-xs" />
+                <input type="number" step="0.01" value={e.netFiscal === undefined ? "" : e.netFiscal}
+                  placeholder={estMois ? String(estMois.netFiscalEstime) : "—"}
+                  onChange={ev => updateMois(mois, "netFiscal", ev.target.value === "" ? "" : Number(ev.target.value))}
+                  className="font-mono w-full border border-stone-300 rounded px-1 py-1 text-xs" />
+                <input type="number" step="0.01" value={e.ps === undefined ? "" : e.ps}
+                  placeholder={estMois ? String(estMois.pasEstime) : "—"}
+                  onChange={ev => updateMois(mois, "ps", ev.target.value === "" ? "" : Number(ev.target.value))}
+                  className="font-mono w-full border border-stone-300 rounded px-1 py-1 text-xs" />
+              </div>
+            );
+          })}
+        </div>
+        <div className="grid grid-cols-5 gap-1 items-center mt-2 pt-2 border-t border-stone-200 px-1">
+          <span className="text-xs font-semibold">Total</span>
+          <span className="font-mono text-xs font-semibold">{formatEUR(totaux.netPaye)}</span>
+          <span className="font-mono text-xs font-semibold">{formatEUR(totaux.salaire)}</span>
+          <span className="font-mono text-xs font-semibold">{formatEUR(totaux.netFiscal)}</span>
+          <span className="font-mono text-xs font-semibold">{formatEUR(totaux.ps)}</span>
+        </div>
+      </Card>
+
+      {personneId === "nicolas" && estimationNicolas && (
+        <Card>
+          <p className="text-sm font-medium mb-3">🍽️ Titres-Restaurant — {annee}</p>
+          <div className="grid grid-cols-4 gap-1 text-xs text-stone-500 mb-1 px-1">
+            <span>Mois</span><span>Jours ouvrés</span><span>Déduits</span><span>TR</span>
+          </div>
+          <div className="space-y-1">
+            {estimationNicolas.moisDetail.map(function(mDet, i) {
+              return (
+                <div key={mDet.mois} className="grid grid-cols-4 gap-1 items-center rounded-lg px-1 py-1" style={{ backgroundColor: i % 2 === 1 ? COLORS.stripe : "transparent" }}>
+                  <span className="text-xs font-mono capitalize">{MOIS_FR[i].slice(0,3)}</span>
+                  <span className="font-mono text-xs">{mDet.joursOuvres}</span>
+                  <span className="font-mono text-xs">{mDet.joursDeduits}</span>
+                  <span className="font-mono text-xs font-semibold">{mDet.ticketsEstimes}</span>
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-xs text-stone-400 mt-2">Nombre uniquement — montants et détail financier disponibles dans l'onglet Estimation.</p>
+        </Card>
+      )}
+
+      {personneId === "nicolas" && (
+        <>
+          <p className="text-sm font-medium px-1">Bulletins de référence</p>
+          {HISTORIQUE.map(function(b, i) {
+            return (
+              <Card key={i}>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-medium">{b.periode}</p>
+                  <p className="text-xs text-stone-400">payé le {formatDateFR(b.paiement)}</p>
+                </div>
+                <div className="font-mono grid grid-cols-2 gap-y-1.5 text-sm">
+                  <p className="text-stone-500 font-sans">Salaire réf.</p><p className="text-right">{formatEUR(b.salaireRef)}</p>
+                  <p className="text-stone-500 font-sans">Net payé</p><p className="text-right font-semibold">{formatEUR(b.netPaye)}</p>
+                  <p className="text-stone-500 font-sans">CP acquis/pris/solde</p><p className="text-right">{b.cpAcquis} / {b.cpPris} / {b.cpSolde}</p>
+                </div>
+                {b.note && <p className="text-xs mt-2 pt-2 border-t border-stone-100" style={{ color: COLORS.gold }}>{b.note}</p>}
+              </Card>
+            );
+          })}
+        </>
+      )}
+    </div>
+  );
+}
+
+function PrimeBox({ label, montant }) {
+  return (<div className="rounded-lg p-3" style={{ backgroundColor: COLORS.stripe }}>
+    <p className="text-xs text-stone-500">{label}</p>
+    <p className="font-mono text-lg font-semibold">{montant != null ? formatEUR(montant) : "à renseigner"}</p>
+  </div>);
+}
+
+function PrimesTab({ config, updateConfig, anneeActuelle, primeMontant }) {
+  return (
+    <div className="space-y-4">
+      <Card>
+        <p className="text-sm font-medium mb-1">🎁 Prime de vacances</p>
+        <p className="text-xs text-stone-400 mb-3">Versée en {MOIS_FR[config.moisPrimeVacances-1]}, calculée sur le salaire de Nicolas ce mois-là</p>
+        <div className="grid grid-cols-2 gap-3">
+          <PrimeBox label="Cette année" montant={primeMontant(config.primeVacancesPct, config.moisPrimeVacances, anneeActuelle)} />
+          <PrimeBox label="Année prochaine" montant={primeMontant(config.primeVacancesPct, config.moisPrimeVacances, anneeActuelle+1)} />
+        </div>
+        <div className="grid grid-cols-2 gap-3 mt-3">
+          <NumberField label="% du salaire" value={config.primeVacancesPct} onChange={v => updateConfig({ primeVacancesPct: v })} suffix="%" />
+          <label className="block">
+            <span className="text-xs text-stone-500">Mois de versement</span>
+            <select value={config.moisPrimeVacances} onChange={e => updateConfig({ moisPrimeVacances: Number(e.target.value) })} className="w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1">
+              {MOIS_FR.map((m,i) => <option key={i} value={i+1}>{m}</option>)}
+            </select>
+          </label>
+        </div>
+      </Card>
+      <Card>
+        <p className="text-sm font-medium mb-1">🎁 Prime de Noël</p>
+        <p className="text-xs text-stone-400 mb-3">Versée en {MOIS_FR[config.moisPrimeNoel-1]}, calculée sur le salaire de Nicolas ce mois-là</p>
+        <div className="grid grid-cols-2 gap-3">
+          <PrimeBox label="Cette année" montant={primeMontant(config.primeNoelPct, config.moisPrimeNoel, anneeActuelle)} />
+          <PrimeBox label="Année prochaine" montant={primeMontant(config.primeNoelPct, config.moisPrimeNoel, anneeActuelle+1)} />
+        </div>
+        <div className="grid grid-cols-2 gap-3 mt-3">
+          <NumberField label="% du salaire" value={config.primeNoelPct} onChange={v => updateConfig({ primeNoelPct: v })} suffix="%" />
+          <label className="block">
+            <span className="text-xs text-stone-500">Mois de versement</span>
+            <select value={config.moisPrimeNoel} onChange={e => updateConfig({ moisPrimeNoel: Number(e.target.value) })} className="w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1">
+              {MOIS_FR.map((m,i) => <option key={i} value={i+1}>{m}</option>)}
+            </select>
+          </label>
+        </div>
+      </Card>
+      <p className="text-xs text-stone-400 px-1">Calculée à partir du salaire réellement saisi pour Nicolas ce mois-là dans l'onglet Salaires.</p>
+    </div>
+  );
+}
+
+function EstimationTab({ nicolas, joursPris, config, updateConfig, archives, ajouterArchive, supprimerArchive, anneeActuelle, primeMontant }) {
+  const [annee, setAnnee] = useState(anneeActuelle);
+  const [detailOuvert, setDetailOuvert] = useState(false);
+  const [erreurCalcul, setErreurCalcul] = useState(null);
+
+  let estimation = null;
+  try {
+    const estimationBase = estimerAnnee(nicolas, annee, joursPris, config);
+    const rttMensuelEstim = calculRTTMensuel(annee, joursPris, config.rttBaseAnnuel, nicolas ? nicolas.dateEntree : null);
+    const primeVacances = primeMontant(config.primeVacancesPct, config.moisPrimeVacances, annee);
+    const primeNoel = primeMontant(config.primeNoelPct, config.moisPrimeNoel, annee);
+    const totalGeneralAvecPrimes = round2(estimationBase.totalGeneral + (primeVacances || 0) + (primeNoel || 0));
+    estimation = { ...estimationBase, rttMensuel: rttMensuelEstim, primeVacances: primeVacances, primeNoel: primeNoel, totalGeneral: totalGeneralAvecPrimes };
+  } catch (e) {
+    if (erreurCalcul !== e.message) setErreurCalcul(e.message);
+  }
+
+  if (!estimation) {
+    return (
+      <Card>
+        <p className="text-sm font-medium mb-1" style={{ color: COLORS.loss }}>⚠️ Calcul d'estimation impossible</p>
+        <p className="text-xs text-stone-500">{erreurCalcul || "Erreur inconnue lors du calcul."}</p>
+      </Card>
+    );
+  }
+
+  const archiveExistante = archives.filter(function(a) { return a.annee === annee; })[0];
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <div className="flex items-center justify-between mb-1">
+          <button onClick={() => setAnnee(annee-1)} className="px-3 py-1 text-sm rounded-lg" style={{ backgroundColor: COLORS.stripe }}>◀</button>
+          <p className="font-display text-lg">Estimation {annee}</p>
+          <button onClick={() => setAnnee(annee+1)} className="px-3 py-1 text-sm rounded-lg" style={{ backgroundColor: COLORS.stripe }}>▶</button>
+        </div>
+        <p className="text-xs text-stone-400 text-center">{estimation.nbMoisEstimes} mois estimé(s) sur 12{archiveExistante ? " · archivée le " + formatDateFR(archiveExistante.dateArchivage) : ""}</p>
+      </Card>
+
+      <Card dark>
+        <p className="text-xs uppercase tracking-wide" style={{ color: "#8FA69B" }}>💰 Résumé exécutif — {annee}</p>
+        <p className="font-display font-mono text-3xl mt-1">{formatEUR(estimation.totalGeneral)}</p>
+        <p className="text-xs mt-1" style={{ color: "#8FA69B" }}>Salaire + prime d'expérience, sur 12 mois</p>
+        <div className="grid grid-cols-3 gap-2 mt-3 pt-3" style={{ borderTop: "1px solid #33443d" }}>
+          <div><p className="text-xs" style={{ color: "#8FA69B" }}>Salaire</p><p className="font-mono text-sm">{formatEUR(estimation.totalSalaire)}</p></div>
+          <div><p className="text-xs" style={{ color: "#8FA69B" }}>⭐ Prime exp.</p><p className="font-mono text-sm">{formatEUR(estimation.totalPrime)}</p></div>
+          <div><p className="text-xs" style={{ color: "#8FA69B" }}>🍽️ TR</p><p className="font-mono text-sm">{formatEUR(estimation.totalTR)}</p></div>
+        </div>
+        <div className="grid grid-cols-2 gap-2 mt-2 pt-2" style={{ borderTop: "1px solid #33443d" }}>
+          <div><p className="text-xs" style={{ color: "#8FA69B" }}>Brut annuel estimé</p><p className="font-mono text-sm">{formatEUR(estimation.totalBrut)}</p></div>
+          <div><p className="text-xs" style={{ color: "#8FA69B" }}>🧾 Net estimé</p><p className="font-mono text-sm">{formatEUR(estimation.totalNet)}</p></div>
+        </div>
+        <div className="grid grid-cols-3 gap-2 mt-2 pt-2" style={{ borderTop: "1px solid #33443d" }}>
+          <div><p className="text-xs" style={{ color: "#8FA69B" }}>🧾 Net fiscal</p><p className="font-mono text-sm">{formatEUR(estimation.totalNetFiscal)}</p></div>
+          <div><p className="text-xs" style={{ color: "#8FA69B" }}>📉 PAS</p><p className="font-mono text-sm">{formatEUR(estimation.totalPAS)}</p></div>
+          <div><p className="text-xs" style={{ color: "#8FA69B" }}>🚌 Transport</p><p className="font-mono text-sm">{formatEUR(estimation.totalTransport)}</p></div>
+        </div>
+      </Card>
+
+      <Card>
+        <p className="text-sm font-medium mb-3">🎁 Primes de l'année</p>
+        <div className="grid grid-cols-3 gap-2">
+          <div className="rounded-lg p-3" style={{ backgroundColor: COLORS.stripe }}>
+            <p className="text-xs text-stone-500">⭐ Expérience</p>
+            <p className="font-mono text-sm font-semibold">{formatEUR(estimation.totalPrime)}</p>
+          </div>
+          <div className="rounded-lg p-3" style={{ backgroundColor: COLORS.stripe }}>
+            <p className="text-xs text-stone-500">Vacances</p>
+            <p className="font-mono text-sm font-semibold">{estimation.primeVacances != null ? formatEUR(estimation.primeVacances) : "à renseigner"}</p>
+          </div>
+          <div className="rounded-lg p-3" style={{ backgroundColor: COLORS.stripe }}>
+            <p className="text-xs text-stone-500">Noël</p>
+            <p className="font-mono text-sm font-semibold">{estimation.primeNoel != null ? formatEUR(estimation.primeNoel) : "à renseigner"}</p>
+          </div>
+        </div>
+        <p className="text-xs text-stone-400 mt-2">Détail et méthode de calcul dans l'onglet Primes.</p>
+      </Card>
+
+      <Card>
+        <p className="text-sm font-medium mb-3">Tableau récapitulatif</p>
+        <div className="grid grid-cols-5 gap-1 text-xs text-stone-500 mb-1 px-1">
+          <span>Mois</span><span>Salaire</span><span>Prime</span><span>TR</span><span>Total</span>
+        </div>
+        <div className="space-y-1">
+          {estimation.moisDetail.map(function(m, i) {
+            return (
+              <div key={m.mois} className="grid grid-cols-5 gap-1 items-center rounded-lg px-1 py-1.5" style={{ backgroundColor: i % 2 === 1 ? COLORS.stripe : "transparent" }}>
+                <span className="text-xs font-mono capitalize">{MOIS_FR[m.mois-1].slice(0,3)}{m.estimeSalaire ? "*" : ""}</span>
+                <span className="font-mono text-xs">{formatEUR(m.salaireBase)}</span>
+                <span className="font-mono text-xs">{formatEUR(m.primeExperience)}</span>
+                <span className="font-mono text-xs">TR : {m.ticketsEstimes}</span>
+                <span className="font-mono text-xs font-semibold">{formatEUR(m.totalMois)}</span>
+              </div>
+            );
+          })}
+        </div>
+        <div className="grid grid-cols-5 gap-1 items-center mt-2 pt-2 border-t border-stone-200 px-1">
+          <span className="text-xs font-semibold">Total</span>
+          <span className="font-mono text-xs font-semibold">{formatEUR(estimation.totalSalaire)}</span>
+          <span className="font-mono text-xs font-semibold">{formatEUR(estimation.totalPrime)}</span>
+          <span className="font-mono text-xs font-semibold">TR : {estimation.totalTickets}</span>
+          <span className="font-mono text-xs font-semibold">{formatEUR(estimation.totalGeneral)}</span>
+        </div>
+        {estimation.nbMoisEstimes > 0 && <p className="text-xs text-stone-400 mt-2">* mois estimé (donnée absente dans Salaires)</p>}
+      </Card>
+
+      <Card>
+        <button onClick={() => setDetailOuvert(!detailOuvert)} className="w-full flex items-center justify-between">
+          <p className="text-sm font-medium">Détail du calcul, mois par mois</p>
+          <span className="text-xs" style={{ color: COLORS.accent }}>{detailOuvert ? "masquer" : "afficher"}</span>
+        </button>
+        {detailOuvert && (
+          <div className="mt-3 space-y-3">
+            {estimation.moisDetail.map(function(m) {
+              return (
+                <div key={m.mois} className="text-xs border-t border-stone-100 pt-2">
+                  <p className="font-medium capitalize mb-1">{MOIS_FR[m.mois-1]} {annee}{m.estimeSalaire ? " (estimé)" : " (réel)"}</p>
+                  <p className="text-stone-500 font-mono">Salaire base : {formatEUR(m.salaireBase)}{m.valorisationAppliquee ? " (dont +" + m.tauxValorisationAnnee + "% valorisation " + annee + ")" : ""}</p>
+                  <p className="text-stone-500 font-mono">Prime d'expérience : base {formatEUR(m.baseConventionnelle)} × taux {m.tauxValorisationAnnee}% ({annee}) = {formatEUR(m.primeExperience)}</p>
+                  <p className="text-stone-500 font-mono">Jours ouvrés : {m.joursOuvres} − 🌴 CP {m.cpPris} − 📅 RTT {m.rttPris} − 🚫 autres absences 0 (non gérées) = jours déduits {m.joursDeduits} → {m.joursTravailles} jours travaillés</p>
+                  <p className="text-stone-500 font-mono">🍽️ TR attribués : {m.ticketsEstimes} — part salariale {formatEUR(config.ticketValeur)}×{config.ticketPartSalarialePct}%=💶{formatEUR(m.valeurTR)} / part employeur {formatEUR(m.valeurTREmployeur)}</p>
+                  <p className="text-stone-500 font-mono">🧾 Net fiscal estimé : {formatEUR(m.brutEstime)} × {config.ratioNetFiscalSurBrut} = {formatEUR(m.netFiscalEstime)} — 📉 PAS : × {config.tauxPAS}% = {formatEUR(m.pasEstime)}</p>
+                  <p className="text-stone-500 font-mono">Déductions : mutuelle conjoint {formatEUR(m.mutuelleConjoint)} — 🚌 Transport (50% de {formatEUR(config.abonnementTransportMensuel)}) : +{formatEUR(m.primeTransport)}</p>
+                  <p className="font-medium mt-1">Total du mois : {formatEUR(m.totalMois)}</p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+
+      <Card>
+        <p className="text-sm font-medium mb-2">Hypothèses retenues</p>
+        <ul className="text-xs text-stone-500 space-y-1.5 list-none">
+          <li>• Pour les mois sans salaire renseigné, dernière valeur connue utilisée : {estimation.dernierConnu != null ? formatEUR(estimation.dernierConnu) : "aucune donnée disponible"}.</li>
+          <li>• Les mois estimés à partir de {formatDateFR(config.valorisationConventionDate)} appliquent le taux de revalorisation de l'année en cours au salaire de référence utilisé.</li>
+          <li>• Les titres-restaurant supposent 1 titre par jour ouvré réellement travaillé (jours ouvrés du mois, moins RTT et CP posés).</li>
+          <li>• Les jours fériés ne sont pas déduits des jours ouvrés (seuls samedis/dimanches sont exclus) — le nombre de jours travaillés peut donc être légèrement surestimé les mois avec jour férié.</li>
+          <li>• Brut et net sont des estimations dérivées du salaire mensuel via des ratios observés sur tes bulletins réels (brut ≈ ×{config.ratioBrutSurBase}, net ≈ ×{config.ratioNetSurBrut} du brut) — ils n'intègrent pas d'éventuels éléments variables (heures sup, primes exceptionnelles).</li>
+        </ul>
+      </Card>
+
+      <Card>
+        <p className="text-sm font-medium mb-3">Formules utilisées</p>
+        <div className="text-xs text-stone-500 space-y-1.5 font-mono">
+          <p>Salaire mensuel = donnée réelle, ou dernière connue × (1+valorisation) si mois estimé après {formatDateFR(config.valorisationConventionDate)}</p>
+          <p>Prime d'expérience = Base conventionnelle Classe 3 ({formatEUR(config.baseConventionnelleClasse3)}) × Taux de revalorisation de l'année</p>
+          <p>Brut estimé = Salaire mensuel × {config.ratioBrutSurBase} (ratio observé sur bulletins réels)</p>
+          <p>Net estimé = Brut estimé × {config.ratioNetSurBrut} (ratio observé sur bulletins réels) − Mutuelle conjoint</p>
+          <p>Net fiscal estimé = Brut estimé × {config.ratioNetFiscalSurBrut} — PAS = Net fiscal × Taux PAS ({config.tauxPAS}%)</p>
+          <p>Prime transport = Abonnement STAR/Keolis × Remboursement ({config.remboursementTransportPct}%)</p>
+          <p>Jours travaillés (= nb TR) = Jours ouvrés du mois − CP pris − RTT pris (week-ends jamais déduits deux fois)</p>
+          <p>Valeur TR = Nb TR × Valeur unitaire × Part salariale ({config.ticketPartSalarialePct}%) — cumul annuel = somme des 12 mois</p>
+          <p>Total mensuel = Salaire mensuel + Prime d'expérience</p>
+        </div>
+        <div className="grid grid-cols-2 gap-3 mt-3 pt-3 border-t border-stone-200">
+          <NumberField label="Base conventionnelle Classe 3" value={config.baseConventionnelleClasse3} onChange={v => updateConfig({ baseConventionnelleClasse3: v })} suffix="€" />
+          <NumberField label="Taux revalorisation 2025" value={config.valorisationTauxDepart} onChange={v => updateConfig({ valorisationTauxDepart: v })} suffix="%" />
+          <NumberField label="Incrément annuel" value={config.valorisationIncrementAnnuel} onChange={v => updateConfig({ valorisationIncrementAnnuel: v })} suffix="pts/an" />
+          <NumberField label="Plafond revalorisation" value={config.valorisationPlafond} onChange={v => updateConfig({ valorisationPlafond: v })} suffix="%" />
+          <NumberField label="Valeur unitaire TR" value={config.ticketValeur} onChange={v => updateConfig({ ticketValeur: v })} suffix="€" />
+          <NumberField label="Part salariale TR" value={config.ticketPartSalarialePct} onChange={v => updateConfig({ ticketPartSalarialePct: v })} suffix="%" />
+          <NumberField label="Ratio brut / base" value={config.ratioBrutSurBase} onChange={v => updateConfig({ ratioBrutSurBase: v })} step="0.001" />
+          <NumberField label="Ratio net / brut" value={config.ratioNetSurBrut} onChange={v => updateConfig({ ratioNetSurBrut: v })} step="0.001" />
+          <NumberField label="Ratio net fiscal / brut" value={config.ratioNetFiscalSurBrut} onChange={v => updateConfig({ ratioNetFiscalSurBrut: v })} step="0.001" />
+          <NumberField label="Taux PAS" value={config.tauxPAS} onChange={v => updateConfig({ tauxPAS: v })} suffix="%" />
+          <NumberField label="Mutuelle conjoint / mois" value={config.mutuelleConjointMensuel} onChange={v => updateConfig({ mutuelleConjointMensuel: v })} suffix="€" />
+          <NumberField label="Abonnement STAR/Keolis" value={config.abonnementTransportMensuel} onChange={v => updateConfig({ abonnementTransportMensuel: v })} suffix="€" />
+          <NumberField label="Remboursement transport" value={config.remboursementTransportPct} onChange={v => updateConfig({ remboursementTransportPct: v })} suffix="%" />
+          <NumberField label="Abonnement suivant (STAR)" value={config.abonnementTransportSuivant} onChange={v => updateConfig({ abonnementTransportSuivant: v })} suffix="€" />
+          <div className="col-span-2">
+            <TextDateField label="Date d'effet du nouveau tarif transport" value={config.abonnementTransportDateEffet} onChange={v => updateConfig({ abonnementTransportDateEffet: v })} />
+          </div>
+          <div className="col-span-2">
+            <TextDateField label="Date d'effet de la valorisation" value={config.valorisationConventionDate} onChange={v => updateConfig({ valorisationConventionDate: v })} />
+          </div>
+        </div>
+      </Card>
+
+      <Card>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-medium">🗄️ Archives</p>
+          <button onClick={() => ajouterArchive(estimation)} className="text-xs flex items-center gap-1 rounded-full px-3 py-1.5" style={{ backgroundColor: COLORS.stripe }}>
+            {archiveExistante ? "Réarchiver " + annee : "Archiver " + annee}
+          </button>
+        </div>
+        <div className="space-y-1 mb-3">
+          {archives.length === 0 && <p className="text-sm text-stone-400">Aucune année archivée.</p>}
+          {archives.map(function(a, i) {
+            return (
+              <Row key={a.annee} index={i}>
+                <div>
+                  <p className="font-mono">{a.annee} — Total {formatEUR(a.estimation.totalGeneral)}</p>
+                  <p className="text-xs text-stone-400">Archivée le {formatDateFR(a.dateArchivage)} · prime d'expérience à {a.estimation.parametres.tauxPrimeExperience}% (base {formatEUR(a.estimation.parametres.baseConventionnelleClasse3)})</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => archiverAnnee(a.estimation)}><DownloadIcon size={15} color={COLORS.accent} /></button>
+                  <button onClick={() => supprimerArchive(a.annee)}><TrashIcon color={COLORS.loss} /></button>
+                </div>
+              </Row>
+            );
+          })}
+        </div>
+        <p className="text-xs text-stone-400">Archiver conserve les paramètres (taux, valorisation) utilisés à ce moment, même si tu les modifies plus tard.</p>
+      </Card>
+    </div>
+  );
+}
+
+function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifierJour, supprimerJour, periodesBloquees, ajouterPeriode, modifierPeriode, supprimerPeriode, personnes, ajouterPersonne, supprimerPersonne, updatePersonne, conges, today }) {
+  const [form, setForm] = useState({ date: "", dateFin: "", type: "RTT", duree: "1", note: "" });
+  const [editingJourId, setEditingJourId] = useState(null);
+  const [periodeForm, setPeriodeForm] = useState({ dateDebut: "", dateFin: "", label: "" });
+  const [editingPeriodeId, setEditingPeriodeId] = useState(null);
+
+  const [modeSelection, setModeSelection] = useState("jours");
+  const [joursChoisis, setJoursChoisis] = useState([]);
+  const [dateAAjouter, setDateAAjouter] = useState("");
+
+  const nicolasP = personnes.filter(function(p) { return p.id === "nicolas"; })[0];
+
+  const maxRtt = Number(config.maxRttConsecutifs) || 5;
+  const dateFinEffective = form.dateFin || form.date;
+  let joursPlage = [];
+  if (editingJourId) {
+    joursPlage = form.date ? [form.date] : [];
+  } else if (modeSelection === "jours") {
+    joursPlage = joursChoisis;
+  } else if (modeSelection === "semaine") {
+    joursPlage = form.date ? semaineOuvree(form.date) : [];
+  } else {
+    joursPlage = form.date ? joursDansPlage(form.date, dateFinEffective, true) : [];
+  }
+  const blackoutsPlage = joursPlage.map(function(d) { return dansPeriodeBloquee(d, periodesBloquees); }).filter(Boolean);
+  const tropConsecutifs = form.type === "RTT" && joursPlage.some(function(d) { return depasseRTTConsecutifs(d, joursPris, maxRtt); });
+  const chevauchements = joursPlage.filter(function(d) { return joursPris.some(function(j) { return j.date === d && (!editingJourId || j.id !== editingJourId); }); });
+  const dureeUnitaire = Number(form.duree) || 0;
+  const dureeTotale = round2(joursPlage.length * dureeUnitaire);
+  const soldeActuelType = form.type === "RTT" ? conges.soldeRTT : conges.soldeCP;
+  const soldeApres = round2(soldeActuelType - dureeTotale + (editingJourId ? Number(form.duree) : 0));
+  const soldeNegatif = soldeApres < 0;
+  const blocageSubmit = !editingJourId && (soldeNegatif || chevauchements.length > 0);
+
+  function commencerEditionJour(j) {
+    setEditingJourId(j.id);
+    setForm({ date: j.date, dateFin: "", type: j.type, duree: String(j.duree), note: j.note || "" });
+  }
+  function annulerEditionJour() {
+    setEditingJourId(null);
+    setForm({ date: "", dateFin: "", type: "RTT", duree: "1", note: "" });
+    setJoursChoisis([]);
+  }
+  function ajouterDateChoisie() {
+    if (!dateAAjouter) return;
+    if (joursChoisis.indexOf(dateAAjouter) === -1) setJoursChoisis([...joursChoisis, dateAAjouter].sort());
+    setDateAAjouter("");
+  }
+  function retirerDateChoisie(d) {
+    setJoursChoisis(joursChoisis.filter(function(x) { return x !== d; }));
+  }
+  function submit(e) {
+    e.preventDefault();
+    if (blocageSubmit) return;
+    if (editingJourId) {
+      if (!form.date) return;
+      modifierJour(editingJourId, { date: form.date, type: form.type, duree: Number(form.duree), note: form.note });
+      setEditingJourId(null);
+    } else {
+      if (!joursPlage.length) return;
+      ajouterJoursPlage(joursPlage, form.type, Number(form.duree), form.note);
+      setJoursChoisis([]);
+    }
+    setForm({ date: "", dateFin: "", type: form.type, duree: "1", note: "" });
+  }
+
+  function commencerEditionPeriode(p) {
+    setEditingPeriodeId(p.id);
+    setPeriodeForm({ dateDebut: p.dateDebut, dateFin: p.dateFin, label: p.label || "" });
+  }
+  function annulerEditionPeriode() {
+    setEditingPeriodeId(null);
+    setPeriodeForm({ dateDebut: "", dateFin: "", label: "" });
+  }
+  function submitPeriode(e) {
+    e.preventDefault();
+    if (!periodeForm.dateDebut || !periodeForm.dateFin) return;
+    if (editingPeriodeId) {
+      modifierPeriode(editingPeriodeId, periodeForm);
+      setEditingPeriodeId(null);
+    } else {
+      ajouterPeriode(periodeForm);
+    }
+    setPeriodeForm({ dateDebut: "", dateFin: "", label: "" });
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3">
+        <Card dark>
+          <p className="text-xs" style={{ color: "#8FA69B" }}>📆 Solde RTT</p>
+          <p className="font-mono text-2xl mt-1">{formatJours(conges.soldeRTT)} j</p>
+          <p className="text-xs mt-1" style={{ color: "#8FA69B" }}>{formatJours(conges.rttAcquis)} acquis − {formatJours(conges.rttPris)} pris</p>
+        </Card>
+        <Card dark>
+          <p className="text-xs" style={{ color: "#8FA69B" }}>🏖️ Solde CP</p>
+          <p className="font-mono text-2xl mt-1">{formatJours(conges.soldeCP)} j</p>
+          <p className="text-xs mt-1" style={{ color: "#8FA69B" }}>{formatJours(conges.cpAcquisFixe)} acquis − {formatJours(conges.cpPris)} pris</p>
+        </Card>
+      </div>
+
+      <Card>
+        <p className="text-xs text-stone-500">En cours d'acquisition (CP, cycle suivant)</p>
+        <p className="font-mono text-lg font-semibold mt-1">{formatJours(conges.cpEnCours)} j</p>
+        <p className="text-xs text-stone-400 mt-1">Cycle d'usage courant depuis le {formatDateFR(toLocalISODate(conges.debutCycleCP))} · RTT sur année civile depuis le 1er janvier</p>
+      </Card>
+
+      <Card>
+        <p className="text-sm font-medium mb-3">Ancienneté & congés supplémentaires</p>
+        <div className="space-y-1 mb-3">
+          {personnes.map(function(p, i) {
+            const annees = p.dateEntree ? anneesEcoulees(parseISO(p.dateEntree), today) : null;
+            const bonus = annees != null ? bonusAncienneteJours(annees) : 0;
+            const palier = prochainPalier(p.dateEntree, today);
+            return (
+              <Row key={p.id} index={i}>
+                <div>
+                  <p className="font-mono">{p.nom || "(sans nom)"}{annees != null ? " — " + annees + " ans" : ""}</p>
+                  {palier && <p className="text-xs text-stone-400">Prochain palier : {palier.annees} ans ({formatDateFR(toLocalISODate(palier.date))})</p>}
+                </div>
+                <p className="font-mono text-sm font-medium" style={{ color: bonus > 0 ? COLORS.gain : "#A8A29E" }}>{bonus > 0 ? "+" + bonus + " j" : "—"}</p>
+              </Row>
+            );
+          })}
+        </div>
+        <p className="text-xs text-stone-400 mb-3">+1 semaine (5 j) à 10 ans, +2 semaines à 20 ans, +3 semaines à 30 ans. Seul le bonus de Nicolas s'ajoute automatiquement à son solde CP.</p>
+        {personnes.map(function(p) {
+          return (
+            <div key={p.id} className="grid grid-cols-2 gap-2 mb-2">
+              <input type="text" value={p.nom} onChange={e => updatePersonne(p.id, { nom: e.target.value })} placeholder="Nom" className="border border-stone-300 rounded-lg px-3 py-2 text-sm" />
+              <div className="flex items-center gap-2">
+                <input type="date" value={p.dateEntree} onChange={e => updatePersonne(p.id, { dateEntree: e.target.value })} className="font-mono flex-1 border border-stone-300 rounded-lg px-3 py-2 text-sm" />
+                {p.id !== "nicolas" && <button onClick={() => supprimerPersonne(p.id)}><TrashIcon color={COLORS.loss} /></button>}
+              </div>
+            </div>
+          );
+        })}
+        <button onClick={ajouterPersonne} className="text-xs mt-1" style={{ color: COLORS.accent }}>+ Ajouter une personne</button>
+      </Card>
+
+      <Card>
+        <p className="text-sm font-medium mb-3">Bases & cycle</p>
+        <div className="grid grid-cols-2 gap-3">
+          <NumberField label="Base RTT / an" value={config.rttBaseAnnuel} onChange={v => updateConfig({ rttBaseAnnuel: v })} step="1" suffix="j" />
+          <NumberField label="Base CP / an" value={config.cpBaseAnnuel} onChange={v => updateConfig({ cpBaseAnnuel: v })} step="1" suffix="j" />
+          <label className="block">
+            <span className="text-xs text-stone-500">Début cycle CP (MM-JJ)</span>
+            <input type="text" value={config.cpCycleDebut} onChange={e => updateConfig({ cpCycleDebut: e.target.value })} placeholder="06-01" className="font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" />
+          </label>
+          <NumberField label="Max RTT consécutifs" value={config.maxRttConsecutifs} onChange={v => updateConfig({ maxRttConsecutifs: v })} step="1" suffix="j" />
+        </div>
+      </Card>
+
+      <Card>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-medium">Périodes sans RTT/CP possible</p>
+          <button onClick={() => envoyerPeriodesParMail(periodesBloquees)} className="text-xs flex items-center gap-1 rounded-full px-3 py-1.5" style={{ backgroundColor: COLORS.stripe }}>
+            <MailIcon size={12} /> Envoyer par mail
+          </button>
+        </div>
+        <div className="space-y-1 mb-3">
+          {periodesBloquees.length === 0 && <p className="text-sm text-stone-400">Aucune période définie.</p>}
+          {periodesBloquees.map(function(per, i) {
+            return (
+              <Row key={per.id} index={i}>
+                <div><p className="font-mono">{formatDateFR(per.dateDebut)} → {formatDateFR(per.dateFin)}</p>{per.label && <p className="text-xs text-stone-400">{per.label}</p>}</div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => commencerEditionPeriode(per)}><EditIcon size={15} color={COLORS.accent} /></button>
+                  <button onClick={() => supprimerPeriode(per.id)}><TrashIcon color={COLORS.loss} /></button>
+                </div>
+              </Row>
+            );
+          })}
+        </div>
+        {editingPeriodeId && <p className="text-xs mb-2" style={{ color: COLORS.accent }}>Modification d'une période existante</p>}
+        <form onSubmit={submitPeriode} className="grid grid-cols-2 gap-2">
+          <input type="date" value={periodeForm.dateDebut} onChange={e => setPeriodeForm({ ...periodeForm, dateDebut: e.target.value })} className="font-mono border border-stone-300 rounded-lg px-3 py-2 text-sm" />
+          <input type="date" value={periodeForm.dateFin} onChange={e => setPeriodeForm({ ...periodeForm, dateFin: e.target.value })} className="font-mono border border-stone-300 rounded-lg px-3 py-2 text-sm" />
+          <input type="text" placeholder="Motif (optionnel)" value={periodeForm.label} onChange={e => setPeriodeForm({ ...periodeForm, label: e.target.value })} className="col-span-2 border border-stone-300 rounded-lg px-3 py-2 text-sm" />
+          <button type="submit" className="text-white rounded-lg py-2 text-sm font-medium" style={{ backgroundColor: COLORS.ink, gridColumn: editingPeriodeId ? "span 1 / span 1" : "span 2 / span 2" }}>
+            {editingPeriodeId ? "Enregistrer" : "Bloquer cette période"}
+          </button>
+          {editingPeriodeId && <button type="button" onClick={annulerEditionPeriode} className="rounded-lg text-sm" style={{ backgroundColor: COLORS.stripe, color: COLORS.ink }}>Annuler</button>}
+        </form>
+      </Card>
+
+      <Card>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-medium">🌴 Historique CP</p>
+          <p className="text-xs text-stone-400">{joursPris.filter(function(j){return j.type==="CP";}).length} entrée(s)</p>
+        </div>
+        <div className="space-y-1">
+          {joursPris.filter(function(j){return j.type==="CP";}).length === 0 && <p className="text-sm text-stone-400">Aucun CP saisi.</p>}
+          {joursPris.filter(function(j){return j.type==="CP";}).map(function(j, i) {
+            return (
+              <Row key={j.id} index={i}>
+                <div><p className="font-mono">{formatDateFR(j.date)}{Number(j.duree)===0.5 ? " (1/2 j)" : ""}</p>{j.note && <p className="text-xs text-stone-400">{j.note}</p>}</div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => commencerEditionJour(j)}><EditIcon size={15} color={COLORS.accent} /></button>
+                  <button onClick={() => supprimerJour(j.id)}><TrashIcon color={COLORS.loss} /></button>
+                </div>
+              </Row>
+            );
+          })}
+        </div>
+      </Card>
+
+      <Card>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-medium">📆 Historique RTT</p>
+          <p className="text-xs text-stone-400">{joursPris.filter(function(j){return j.type==="RTT";}).length} entrée(s)</p>
+        </div>
+        <div className="space-y-1">
+          {joursPris.filter(function(j){return j.type==="RTT";}).length === 0 && <p className="text-sm text-stone-400">Aucun RTT saisi.</p>}
+          {joursPris.filter(function(j){return j.type==="RTT";}).map(function(j, i) {
+            return (
+              <Row key={j.id} index={i}>
+                <div><p className="font-mono">{formatDateFR(j.date)}{Number(j.duree)===0.5 ? " (1/2 j)" : ""}</p>{j.note && <p className="text-xs text-stone-400">{j.note}</p>}</div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => commencerEditionJour(j)}><EditIcon size={15} color={COLORS.accent} /></button>
+                  <button onClick={() => supprimerJour(j.id)}><TrashIcon color={COLORS.loss} /></button>
+                </div>
+              </Row>
+            );
+          })}
+        </div>
+      </Card>
+
+      <Card>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-medium">{editingJourId ? "Modifier une entrée" : "Poser une absence"}</p>
+          <button onClick={() => exporterICS(joursPris)} disabled={joursPris.length === 0} className="text-xs flex items-center gap-1 rounded-full px-3 py-1.5 disabled:opacity-40" style={{ backgroundColor: COLORS.stripe }}>
+            <DownloadIcon size={13} /> Exporter (.ics)
+          </button>
+        </div>
+
+        <p className="text-xs text-stone-500 mb-1">Type d'absence</p>
+        <div className="flex gap-2 mb-3">
+          <button type="button" onClick={() => setForm({ ...form, type: "CP" })} className="flex-1 py-2 rounded-lg text-sm"
+            style={{ backgroundColor: form.type === "CP" ? COLORS.ink : COLORS.stripe, color: form.type === "CP" ? "#fff" : COLORS.ink }}>🌴 Congés Payés</button>
+          <button type="button" onClick={() => setForm({ ...form, type: "RTT" })} className="flex-1 py-2 rounded-lg text-sm"
+            style={{ backgroundColor: form.type === "RTT" ? COLORS.ink : COLORS.stripe, color: form.type === "RTT" ? "#fff" : COLORS.ink }}>📅 RTT</button>
+        </div>
+
+        {!editingJourId && (
+          <>
+            <p className="text-xs text-stone-500 mb-1">Mode de sélection</p>
+            <div className="flex gap-2 mb-3">
+              <button type="button" onClick={() => setModeSelection("jours")} className="flex-1 py-2 rounded-lg text-xs"
+                style={{ backgroundColor: modeSelection === "jours" ? COLORS.ink : COLORS.stripe, color: modeSelection === "jours" ? "#fff" : COLORS.ink }}>📅 Jour(s)</button>
+              <button type="button" onClick={() => setModeSelection("semaine")} className="flex-1 py-2 rounded-lg text-xs"
+                style={{ backgroundColor: modeSelection === "semaine" ? COLORS.ink : COLORS.stripe, color: modeSelection === "semaine" ? "#fff" : COLORS.ink }}>🗓️ Semaine</button>
+              <button type="button" onClick={() => setModeSelection("periode")} className="flex-1 py-2 rounded-lg text-xs"
+                style={{ backgroundColor: modeSelection === "periode" ? COLORS.ink : COLORS.stripe, color: modeSelection === "periode" ? "#fff" : COLORS.ink }}>📆 Période</button>
+            </div>
+          </>
+        )}
+
+        <form onSubmit={submit} className="grid grid-cols-2 gap-2">
+          {editingJourId && (
+            <label className="block col-span-2">
+              <span className="text-xs text-stone-500">Date</span>
+              <input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" />
+            </label>
+          )}
+
+          {!editingJourId && modeSelection === "jours" && (
+            <div className="col-span-2">
+              <div className="flex gap-2 mb-2">
+                <input type="date" value={dateAAjouter} onChange={e => setDateAAjouter(e.target.value)} className="font-mono flex-1 border border-stone-300 rounded-lg px-3 py-2 text-sm" />
+                <button type="button" onClick={ajouterDateChoisie} className="px-4 rounded-lg text-sm text-white" style={{ backgroundColor: COLORS.ink }}>+</button>
+              </div>
+              {joursChoisis.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-1">
+                  {joursChoisis.map(function(d) {
+                    return (
+                      <span key={d} className="text-xs font-mono rounded-full px-2 py-1 flex items-center gap-1" style={{ backgroundColor: COLORS.stripe }}>
+                        {formatDateFR(d)}
+                        <button type="button" onClick={() => retirerDateChoisie(d)} style={{ color: COLORS.loss }}>×</button>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {!editingJourId && modeSelection === "semaine" && (
+            <label className="block col-span-2">
+              <span className="text-xs text-stone-500">N'importe quel jour de la semaine visée</span>
+              <input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" />
+            </label>
+          )}
+
+          {!editingJourId && modeSelection === "periode" && (
+            <>
+              <label className="block">
+                <span className="text-xs text-stone-500">Du</span>
+                <input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" />
+              </label>
+              <label className="block">
+                <span className="text-xs text-stone-500">Au</span>
+                <input type="date" value={form.dateFin} onChange={e => setForm({ ...form, dateFin: e.target.value })} className="font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" />
+              </label>
+            </>
+          )}
+
+          <select value={form.duree} onChange={e => setForm({ ...form, duree: e.target.value })} className="border border-stone-300 rounded-lg px-3 py-2 text-sm">
+            <option value="1">Journée entière</option><option value="0.5">Demi-journée</option>
+          </select>
+          <input type="text" placeholder="Note (optionnel)" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} className="border border-stone-300 rounded-lg px-3 py-2 text-sm" />
+
+          {joursPlage.length > 0 && (
+            <div className="col-span-2 rounded-lg p-3 text-xs" style={{ backgroundColor: COLORS.stripe }}>
+              <p>{joursPlage.length} jour(s) × {form.duree === "0.5" ? "1/2" : "1"} = <span className="font-mono font-semibold">{formatJours(dureeTotale)} j</span> déduit(s)</p>
+              <p className="mt-1">Nouveau solde {form.type} : <span className="font-mono font-semibold" style={{ color: soldeNegatif ? COLORS.loss : COLORS.gain }}>{formatJours(soldeApres)} j</span></p>
+              <p className="mt-1 text-stone-500">Impact TR estimé : −{joursPlage.length} jour(s) travaillé(s) sur le(s) mois concerné(s)</p>
+            </div>
+          )}
+
+          {blackoutsPlage.length > 0 && <Warning>{blackoutsPlage.length > 1 ? blackoutsPlage.length + " jours tombent" : "Cette date tombe"} dans une période bloquée{blackoutsPlage[0].label ? " : " + blackoutsPlage[0].label : ""}</Warning>}
+          {tropConsecutifs && <Warning>Dépasse {maxRtt} RTT consécutifs</Warning>}
+          {chevauchements.length > 0 && <Warning>Chevauchement : {chevauchements.length > 1 ? chevauchements.length + " dates ont" : "cette date a"} déjà une absence saisie — bloqué</Warning>}
+          {soldeNegatif && <Warning>Solde {form.type} insuffisant ({formatJours(soldeActuelType)} j disponibles) — bloqué</Warning>}
+
+          <div className="col-span-2 flex gap-2">
+            <button type="submit" disabled={blocageSubmit || (!editingJourId && joursPlage.length === 0)} className="flex-1 text-white rounded-lg py-2 text-sm font-medium disabled:opacity-40" style={{ backgroundColor: COLORS.ink }}>{editingJourId ? "Enregistrer" : "Ajouter"}</button>
+            {editingJourId && <button type="button" onClick={annulerEditionJour} className="px-4 rounded-lg text-sm" style={{ backgroundColor: COLORS.stripe, color: COLORS.ink }}>Annuler</button>}
+          </div>
+        </form>
+      </Card>
+
+      <p className="text-xs text-stone-400 px-1">RTT calculé sur l'année civile en cours ; CP sur le cycle d'usage (1er juin → 31 mai par défaut). Suivi en temps réel, contrairement au bulletin officiel qui a un mois de décalage.</p>
+    </div>
+  );
+}
+
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null, info: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error: error };
+  }
+  componentDidCatch(error, info) {
+    this.setState({ info: info });
+    console.error("Erreur applicative :", error, info);
+  }
+  render() {
+    if (this.state.error) {
+      const err = this.state.error;
+      const info = this.state.info;
+      return (
+        <div style={{ minHeight: "100vh", backgroundColor: "#F7F8F4", padding: "20px", fontFamily: "ui-sans-serif, system-ui, sans-serif", color: "#1F2B27" }}>
+          <h2 style={{ margin: "0 0 8px 0" }}>Une erreur est survenue</h2>
+          <p style={{ color: "#78716C", fontSize: "14px" }}>Copie le texte ci-dessous pour signaler le problème précisément.</p>
+          <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", backgroundColor: "#fff", border: "1px solid #E7E5E4", padding: "12px", borderRadius: "8px", fontSize: "12px", overflow: "auto", color: "#9C4A3C" }}>
+            {String(err && err.message ? err.message : err)}
+            {"\n\n"}
+            {String(err && err.stack ? err.stack : "")}
+            {info && info.componentStack ? "\n\nComposant :\n" + info.componentStack : ""}
+          </pre>
+          <button onClick={() => window.location.reload()} style={{ marginTop: "12px", padding: "8px 16px", backgroundColor: "#1F2B27", color: "#fff", border: "none", borderRadius: "8px", cursor: "pointer" }}>Recharger</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<ErrorBoundary><App /></ErrorBoundary>);
 </script>
 </body>
 </html>
