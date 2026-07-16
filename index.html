@@ -92,7 +92,7 @@ const DEFAULT_STATE = {
     primeVacancesPct: 50, moisPrimeVacances: 5, primeNoelPct: 100, moisPrimeNoel: 11,
     ticketNombreMois: 18, ticketValeur: 12.20, ticketPartSalarialePct: 40,
     valorisationConventionDate: "2025-08-01",
-    baseConventionnelleClasse3: 2089.17, valorisationTauxDepart: 9, valorisationIncrementAnnuel: 1.5, valorisationPlafond: 15,
+    baseConventionnelleClasse3: 2089.17, baseConventionnelleClasse3_2026: "", valorisationTauxDepart: 9, valorisationIncrementAnnuel: 1.5, valorisationPlafond: 15,
     ratioBrutSurBase: 1.085, ratioNetSurBrut: 0.723, ratioNetFiscalSurBrut: 0.858,
     mutuelleConjointMensuel: 48.08,
     tauxPAS: 2.2,
@@ -234,8 +234,15 @@ function tauxValorisationPourAnnee(annee, mois, config) {
   const taux = depart + (anneeEffective - 2025) * increment;
   return Math.min(plafond, round2(taux));
 }
+function baseConventionnellePourAnnee(anneeEffective, config) {
+  if (anneeEffective >= 2026 && config.baseConventionnelleClasse3_2026 !== "" && config.baseConventionnelleClasse3_2026 != null) {
+    return Number(config.baseConventionnelleClasse3_2026);
+  }
+  return Number(config.baseConventionnelleClasse3) || 2089.17;
+}
 function primeExperienceMensuelle(annee, mois, config) {
-  const base = Number(config.baseConventionnelleClasse3) || 2089.17;
+  const anneeEffective = anneeRevalorisation(annee, mois);
+  const base = baseConventionnellePourAnnee(anneeEffective, config);
   const taux = tauxValorisationPourAnnee(annee, mois, config);
   return { base: base, taux: taux, montant: round2(base * taux / 100) };
 }
@@ -287,7 +294,10 @@ function estimerAnnee(personne, annee, joursPris, config, suiviConges) {
     const estJourOuvre = function(j) { const js = parseISO(j.date).getDay(); return js !== 0 && js !== 6; };
     const rttPrisOuvre = suiviConges === false ? 0 : joursPris.filter(function(j){ return j.date.slice(0,7)===key && j.type==="RTT" && estJourOuvre(j); }).reduce(function(s,j){return s+Number(j.duree);},0);
     const cpPrisOuvre = suiviConges === false ? 0 : joursPris.filter(function(j){ return j.date.slice(0,7)===key && j.type==="CP" && estJourOuvre(j); }).reduce(function(s,j){return s+Number(j.duree);},0);
-    const joursTravailles = Math.max(0, joursOuvres - rttPrisOuvre - cpPrisOuvre);
+    const joursTravaillesCalcule = Math.max(0, joursOuvres - rttPrisOuvre - cpPrisOuvre);
+    const trManuel = (reel && reel.trManuel !== undefined && reel.trManuel !== "" && reel.trManuel !== null) ? Number(reel.trManuel) : null;
+    const joursTravailles = trManuel != null ? trManuel : joursTravaillesCalcule;
+    const trEstManuel = trManuel != null;
     const joursDeduits = rttPrisOuvre + cpPrisOuvre;
     const valeurTR = round2(joursTravailles * (Number(config.ticketValeur)||0) * (Number(config.ticketPartSalarialePct)||0) / 100);
     const valeurTREmployeur = round2(joursTravailles * (Number(config.ticketValeur)||0) * (100 - (Number(config.ticketPartSalarialePct)||0)) / 100);
@@ -299,7 +309,7 @@ function estimerAnnee(personne, annee, joursPris, config, suiviConges) {
       netFiscalEstime: netFiscalEstime, pasEstime: pasEstime, mutuelleConjoint: mutuelleConjoint, primeTransport: primeTransport,
       baseConventionnelle: baseConv, tauxValorisationAnnee: tauxValoAnnee,
       joursOuvres: joursOuvres, rttPris: rttPrisMois, cpPris: cpPrisMois, joursDeduits: joursDeduits, joursTravailles: joursTravailles,
-      ticketsEstimes: joursTravailles, valeurTR: valeurTR, valeurTREmployeur: valeurTREmployeur, totalMois: totalMois,
+      ticketsEstimes: joursTravailles, trEstManuel: trEstManuel, joursTravaillesCalcule: joursTravaillesCalcule, valeurTR: valeurTR, valeurTREmployeur: valeurTREmployeur, totalMois: totalMois,
     });
     totalSalaire += salaireBase; totalPrime += primeExperience; totalTR += valeurTR; totalTickets += joursTravailles;
     totalRTT += rttPrisMois; totalCP += cpPrisMois; totalBrut += brutEstime; totalNet += netEstime;
@@ -948,17 +958,22 @@ function SalairesTab({ personnes, updatePersonnes, config, updateConfig, joursPr
           </div>
           <div className="space-y-1">
             {estimationNicolas.moisDetail.map(function(mDet, i) {
+              const key = annee + "-" + String(mDet.mois).padStart(2, "0");
+              const eMois = personne.entreesMensuelles[key] || {};
               return (
                 <div key={mDet.mois} className="grid grid-cols-4 gap-1 items-center rounded-lg px-1 py-1" style={{ backgroundColor: i % 2 === 1 ? COLORS.stripe : "transparent" }}>
                   <span className="text-xs font-mono capitalize">{MOIS_FR[i].slice(0,3)}</span>
                   <span className="font-mono text-xs">{mDet.joursOuvres}</span>
                   <span className="font-mono text-xs">{mDet.joursDeduits}</span>
-                  <span className="font-mono text-xs font-semibold">{mDet.ticketsEstimes}</span>
+                  <input type="number" step="1" value={eMois.trManuel === undefined ? "" : eMois.trManuel}
+                    placeholder={String(mDet.joursTravaillesCalcule)}
+                    onChange={ev => updateMois(mDet.mois, "trManuel", ev.target.value === "" ? "" : Number(ev.target.value))}
+                    className={"font-mono w-full border rounded px-1 py-1 text-xs font-semibold " + (mDet.trEstManuel ? "border-stone-400" : "border-stone-300")} />
                 </div>
               );
             })}
           </div>
-          <p className="text-xs text-stone-400 mt-2">Nombre uniquement — montants et détail financier disponibles dans l'onglet Estimation.</p>
+          <p className="text-xs text-stone-400 mt-2">Nombre calculé automatiquement (jours ouvrés − CP − RTT) ; saisis une valeur pour corriger un mois précis — elle est mémorisée et recalcule automatiquement les montants. Champ vide = calcul auto.</p>
         </Card>
       )}
 
@@ -1192,7 +1207,8 @@ function EstimationTab({ nicolas, joursPris, config, updateConfig, archives, ajo
           <p>Total mensuel = Salaire mensuel + Prime d'expérience</p>
         </div>
         <div className="grid grid-cols-2 gap-3 mt-3 pt-3 border-t border-stone-200">
-          <NumberField label="Base conventionnelle Classe 3" value={config.baseConventionnelleClasse3} onChange={v => updateConfig({ baseConventionnelleClasse3: v })} suffix="€" />
+          <NumberField label="Base conventionnelle Classe 3 (2025)" value={config.baseConventionnelleClasse3} onChange={v => updateConfig({ baseConventionnelleClasse3: v })} suffix="€" />
+          <NumberField label="Base conventionnelle 2026+ (si différente)" value={config.baseConventionnelleClasse3_2026} onChange={v => updateConfig({ baseConventionnelleClasse3_2026: v })} suffix="€" />
           <NumberField label="Taux revalorisation 2025" value={config.valorisationTauxDepart} onChange={v => updateConfig({ valorisationTauxDepart: v })} suffix="%" />
           <NumberField label="Incrément annuel" value={config.valorisationIncrementAnnuel} onChange={v => updateConfig({ valorisationIncrementAnnuel: v })} suffix="pts/an" />
           <NumberField label="Plafond revalorisation" value={config.valorisationPlafond} onChange={v => updateConfig({ valorisationPlafond: v })} suffix="%" />
