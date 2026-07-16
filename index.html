@@ -728,9 +728,10 @@ function App() {
   const conges = { soldeRTT, soldeCP, rttAcquis, rttPris, cpAcquisFixe, cpPris, cpEnCours, debutCycleCP };
 
   function primeMontant(pct, mois, annee) {
-    const key = annee + "-" + String(mois).padStart(2, "0");
-    const entree = (nicolas && nicolas.entreesMensuelles) ? nicolas.entreesMensuelles[key] : null;
-    const s = entree ? entree.salaire : null;
+    if (!nicolas) return null;
+    const estimation = estimerAnnee(nicolas, annee, state.joursPris || [], state.config);
+    const moisData = estimation.moisDetail[mois - 1];
+    const s = moisData ? moisData.salaireBase : null;
     if (!s) return null;
     return round2(Number(s) * pct / 100);
   }
@@ -902,9 +903,9 @@ function SalairesTab({ personnes, updatePersonnes, config, updateConfig, joursPr
           <p className="font-display text-lg">{annee}</p>
           <button onClick={() => setAnnee(annee+1)} className="px-3 py-1 text-sm rounded-lg" style={{ backgroundColor: COLORS.stripe }}>▶</button>
         </div>
-        {personneId === "nicolas" && <p className="text-xs text-stone-400 mb-2">Champs vides = valeur estimée automatiquement (affichée en filigrane). Saisis le bulletin réel pour la remplacer.</p>}
-        <div className="grid grid-cols-5 gap-1 text-xs text-stone-500 mb-1 px-1">
-          <span>Mois</span><span>💰 Net payé</span><span>Salaire</span><span>🧾 N.fiscal</span><span>📉 PAS</span>
+        {personneId === "nicolas" && <p className="text-xs text-stone-400 mb-2">Champs vides = valeur estimée automatiquement (affichée en filigrane, arrondie). Saisis le bulletin réel pour la remplacer.</p>}
+        <div className="grid grid-cols-4 gap-1 text-xs text-stone-500 mb-1 px-1">
+          <span>Mois</span><span>💰 Salaire</span><span>🧾 N.fiscal</span><span>📉 PAS</span>
         </div>
         <div className="space-y-1">
           {MOIS_FR.map(function(m, i) {
@@ -913,31 +914,26 @@ function SalairesTab({ personnes, updatePersonnes, config, updateConfig, joursPr
             const e = personne.entreesMensuelles[key] || {};
             const estMois = estimationNicolas ? estimationNicolas.moisDetail[i] : null;
             return (
-              <div key={mois} className="grid grid-cols-5 gap-1 items-center rounded-lg px-1 py-1" style={{ backgroundColor: i % 2 === 1 ? COLORS.stripe : "transparent" }}>
+              <div key={mois} className="grid grid-cols-4 gap-1 items-center rounded-lg px-1 py-1" style={{ backgroundColor: i % 2 === 1 ? COLORS.stripe : "transparent" }}>
                 <span className="text-xs font-mono capitalize">{m.slice(0,3)}</span>
-                <input type="number" step="0.01" value={e.netPaye === undefined ? "" : e.netPaye}
-                  placeholder={estMois ? String(estMois.netEstime) : "—"}
-                  onChange={ev => updateMois(mois, "netPaye", ev.target.value === "" ? "" : Number(ev.target.value))}
-                  className="font-mono w-full border border-stone-300 rounded px-1 py-1 text-xs" />
                 <input type="number" step="0.01" value={e.salaire === undefined ? "" : e.salaire}
-                  placeholder={estMois ? String(estMois.salaireBase) : "—"}
+                  placeholder={estMois ? formatJours(estMois.salaireBase) : "—"}
                   onChange={ev => updateMois(mois, "salaire", ev.target.value === "" ? "" : Number(ev.target.value))}
                   className="font-mono w-full border border-stone-300 rounded px-1 py-1 text-xs" />
                 <input type="number" step="0.01" value={e.netFiscal === undefined ? "" : e.netFiscal}
-                  placeholder={estMois ? String(estMois.netFiscalEstime) : "—"}
+                  placeholder={estMois ? formatJours(estMois.netFiscalEstime) : "—"}
                   onChange={ev => updateMois(mois, "netFiscal", ev.target.value === "" ? "" : Number(ev.target.value))}
                   className="font-mono w-full border border-stone-300 rounded px-1 py-1 text-xs" />
                 <input type="number" step="0.01" value={e.ps === undefined ? "" : e.ps}
-                  placeholder={estMois ? String(estMois.pasEstime) : "—"}
+                  placeholder={estMois ? formatJours(estMois.pasEstime) : "—"}
                   onChange={ev => updateMois(mois, "ps", ev.target.value === "" ? "" : Number(ev.target.value))}
                   className="font-mono w-full border border-stone-300 rounded px-1 py-1 text-xs" />
               </div>
             );
           })}
         </div>
-        <div className="grid grid-cols-5 gap-1 items-center mt-2 pt-2 border-t border-stone-200 px-1">
+        <div className="grid grid-cols-4 gap-1 items-center mt-2 pt-2 border-t border-stone-200 px-1">
           <span className="text-xs font-semibold">Total</span>
-          <span className="font-mono text-xs font-semibold">{formatEUR(totaux.netPaye)}</span>
           <span className="font-mono text-xs font-semibold">{formatEUR(totaux.salaire)}</span>
           <span className="font-mono text-xs font-semibold">{formatEUR(totaux.netFiscal)}</span>
           <span className="font-mono text-xs font-semibold">{formatEUR(totaux.ps)}</span>
