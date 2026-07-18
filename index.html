@@ -78,6 +78,7 @@ const COLORS = {
 };
 
 const MOIS_FR = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
+const BASE_CONVENTIONNELLE_HISTORIQUE = { 2022: 1964.17, 2023: 2023.33, 2024: 2068.33, 2025: 2089.17, 2026: 2130.92 };
 
 const HISTORIQUE = [
   { periode: "Juillet 2025", paiement: "2025-07-31", salaireRef: 2261.76, brut: 2459.21, netSocial: 1879.17, netPaye: 1779.56, cpAcquis: 27, cpPris: 9, cpSolde: 18 },
@@ -92,7 +93,7 @@ const DEFAULT_STATE = {
     primeVacancesPct: 50, moisPrimeVacances: 5, primeNoelPct: 100, moisPrimeNoel: 11,
     ticketNombreMois: 18, ticketValeur: 12.20, ticketPartSalarialePct: 40,
     valorisationConventionDate: "2025-08-01",
-    baseConventionnelleClasse3: 2089.17, baseConventionnelleClasse3_2026: "", valorisationTauxDepart: 9, valorisationIncrementAnnuel: 1.5, valorisationPlafond: 15,
+    baseConventionnelleClasse3: 2089.17, croissanceBaseMoyenne: 1.74, valorisationTauxDepart: 9, valorisationIncrementAnnuel: 1.5, valorisationPlafond: 15,
     ratioBrutSurBase: 1.085, ratioNetSurBrut: 0.723, ratioNetFiscalSurBrut: 0.858,
     mutuelleConjointMensuel: 48.08,
     tauxPAS: 2.2,
@@ -184,14 +185,37 @@ function semaineOuvree(dateStr) {
   for (let i = 0; i < 5; i++) jours.push(toLocalISODate(new Date(lundi.getFullYear(), lundi.getMonth(), lundi.getDate() + i)));
   return jours;
 }
+function datePaques(annee) {
+  // Algorithme de Meeus/Jones/Butcher
+  const a = annee % 19, b = Math.floor(annee/100), c = annee % 100;
+  const d = Math.floor(b/4), e = b % 4, f = Math.floor((b+8)/25);
+  const g = Math.floor((b-f+1)/3), h = (19*a+b-d-g+15) % 30;
+  const i = Math.floor(c/4), k = c % 4, l = (32+2*e+2*i-h-k) % 7;
+  const m = Math.floor((a+11*h+22*l)/451);
+  const mois = Math.floor((h+l-7*m+114)/31);
+  const jour = ((h+l-7*m+114) % 31) + 1;
+  return new Date(annee, mois-1, jour);
+}
+function joursFeriesFrance(annee) {
+  const paques = datePaques(annee);
+  const plusJours = function(d, n) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()+n); };
+  const fixes = [
+    new Date(annee,0,1), new Date(annee,4,1), new Date(annee,4,8),
+    new Date(annee,6,14), new Date(annee,7,15), new Date(annee,10,1),
+    new Date(annee,10,11), new Date(annee,11,25),
+  ];
+  const mobiles = [plusJours(paques,1), plusJours(paques,39), plusJours(paques,50)];
+  return fixes.concat(mobiles).map(toLocalISODate);
+}
 function joursOuvresDansMois(annee, mois) {
   const debut = new Date(annee, mois-1, 1);
   const fin = new Date(annee, mois, 0);
+  const feries = joursFeriesFrance(annee);
   let count = 0;
   let d = new Date(debut);
   while (d <= fin) {
     const js = d.getDay();
-    if (js !== 0 && js !== 6) count++;
+    if (js !== 0 && js !== 6 && feries.indexOf(toLocalISODate(d)) === -1) count++;
     d = new Date(d.getFullYear(), d.getMonth(), d.getDate()+1);
   }
   return count;
@@ -235,10 +259,12 @@ function tauxValorisationPourAnnee(annee, mois, config) {
   return Math.min(plafond, round2(taux));
 }
 function baseConventionnellePourAnnee(anneeEffective, config) {
-  if (anneeEffective >= 2026 && config.baseConventionnelleClasse3_2026 !== "" && config.baseConventionnelleClasse3_2026 != null) {
-    return Number(config.baseConventionnelleClasse3_2026);
-  }
-  return Number(config.baseConventionnelleClasse3) || 2089.17;
+  if (BASE_CONVENTIONNELLE_HISTORIQUE[anneeEffective] != null) return BASE_CONVENTIONNELLE_HISTORIQUE[anneeEffective];
+  if (anneeEffective < 2022) return Number(config.baseConventionnelleClasse3) || BASE_CONVENTIONNELLE_HISTORIQUE[2022];
+  const croissance = Number(config.croissanceBaseMoyenne != null ? config.croissanceBaseMoyenne : 1.74) / 100;
+  let base = BASE_CONVENTIONNELLE_HISTORIQUE[2026];
+  for (let a = 2027; a <= anneeEffective; a++) base = base * (1 + croissance);
+  return round2(base);
 }
 function primeExperienceMensuelle(annee, mois, config) {
   const anneeEffective = anneeRevalorisation(annee, mois);
@@ -264,13 +290,9 @@ function estimerAnnee(personne, annee, joursPris, config, suiviConges) {
     const estimeSalaire = !(reel && reel.salaire);
     const apresValorisation = key >= dateValorisation.slice(0,7);
     let salaireBase = estimeSalaire ? dernierConnu : Number(reel.salaire);
-    let valorisationAppliquee = false;
+    const valorisationAppliquee = false;
     const primeExpInfo = primeExperienceMensuelle(annee, m, config);
     const tauxValoAnnee = primeExpInfo.taux;
-    if (estimeSalaire && apresValorisation && salaireBase != null) {
-      salaireBase = round2(salaireBase * (1 + tauxValoAnnee/100));
-      valorisationAppliquee = true;
-    }
     salaireBase = salaireBase || 0;
     const baseConv = primeExpInfo.base;
     const primeExperience = primeExpInfo.montant;
@@ -292,8 +314,11 @@ function estimerAnnee(personne, annee, joursPris, config, suiviConges) {
     const rttPrisMois = suiviConges === false ? 0 : joursPris.filter(function(j){ return j.date.slice(0,7)===key && j.type==="RTT"; }).reduce(function(s,j){return s+Number(j.duree);},0);
     const cpPrisMois = suiviConges === false ? 0 : joursPris.filter(function(j){ return j.date.slice(0,7)===key && j.type==="CP"; }).reduce(function(s,j){return s+Number(j.duree);},0);
     const estJourOuvre = function(j) { const js = parseISO(j.date).getDay(); return js !== 0 && js !== 6; };
-    const rttPrisOuvre = suiviConges === false ? 0 : joursPris.filter(function(j){ return j.date.slice(0,7)===key && j.type==="RTT" && estJourOuvre(j); }).reduce(function(s,j){return s+Number(j.duree);},0);
-    const cpPrisOuvre = suiviConges === false ? 0 : joursPris.filter(function(j){ return j.date.slice(0,7)===key && j.type==="CP" && estJourOuvre(j); }).reduce(function(s,j){return s+Number(j.duree);},0);
+    const moisPrec = m === 1 ? { a: annee - 1, m: 12 } : { a: annee, m: m - 1 };
+    const keyPrec = moisPrec.a + "-" + String(moisPrec.m).padStart(2, "0");
+    const deduitTR = function(j) { return (j.type === "RTT" || j.type === "CP" || j.type === "Formation") && estJourOuvre(j); };
+    const rttPrisOuvre = suiviConges === false ? 0 : joursPris.filter(function(j){ return j.date.slice(0,7)===keyPrec && deduitTR(j); }).reduce(function(s,j){return s+Number(j.duree);},0);
+    const cpPrisOuvre = 0;
     const joursTravaillesCalcule = Math.max(0, joursOuvres - rttPrisOuvre - cpPrisOuvre);
     const trManuel = (reel && reel.trManuel !== undefined && reel.trManuel !== "" && reel.trManuel !== null) ? Number(reel.trManuel) : null;
     const joursTravailles = trManuel != null ? trManuel : joursTravaillesCalcule;
@@ -726,7 +751,7 @@ function App() {
   const bonusCP = bonusAncienneteJours(anneesNicolas);
 
   const debutRTT = new Date(today.getFullYear(), 0, 1);
-  const rttAcquis = accrualDepuis(state.config.rttBaseAnnuel, debutRTT, today);
+  const rttAcquis = round2(Number(state.config.rttBaseAnnuel));
   const rttPris = state.joursPris.filter(j => j.type === "RTT" && j.date >= toLocalISODate(debutRTT)).reduce((s,j) => s + Number(j.duree), 0);
   const soldeRTT = round2(rttAcquis - rttPris);
 
@@ -734,7 +759,7 @@ function App() {
   const cpAcquisFixe = round2(Number(state.config.cpBaseAnnuel) + bonusCP);
   const cpPris = state.joursPris.filter(j => j.type === "CP" && j.date >= toLocalISODate(debutCycleCP)).reduce((s,j) => s + Number(j.duree), 0);
   const soldeCP = round2(cpAcquisFixe - cpPris);
-  const cpEnCours = accrualDepuis(state.config.cpBaseAnnuel, new Date(today.getFullYear(), 0, 1), today);
+  const cpEnCours = round2(Number(state.config.cpBaseAnnuel));
   const conges = { soldeRTT, soldeCP, rttAcquis, rttPris, cpAcquisFixe, cpPris, cpEnCours, debutCycleCP };
 
   function primeMontant(pct, mois, annee) {
@@ -1208,7 +1233,7 @@ function EstimationTab({ nicolas, joursPris, config, updateConfig, archives, ajo
         </div>
         <div className="grid grid-cols-2 gap-3 mt-3 pt-3 border-t border-stone-200">
           <NumberField label="Base conventionnelle Classe 3 (2025)" value={config.baseConventionnelleClasse3} onChange={v => updateConfig({ baseConventionnelleClasse3: v })} suffix="€" />
-          <NumberField label="Base conventionnelle 2026+ (si différente)" value={config.baseConventionnelleClasse3_2026} onChange={v => updateConfig({ baseConventionnelleClasse3_2026: v })} suffix="€" />
+          <NumberField label="Croissance base 2027+ (moyenne 2024-26)" value={config.croissanceBaseMoyenne} onChange={v => updateConfig({ croissanceBaseMoyenne: v })} suffix="%/an" />
           <NumberField label="Taux revalorisation 2025" value={config.valorisationTauxDepart} onChange={v => updateConfig({ valorisationTauxDepart: v })} suffix="%" />
           <NumberField label="Incrément annuel" value={config.valorisationIncrementAnnuel} onChange={v => updateConfig({ valorisationIncrementAnnuel: v })} suffix="pts/an" />
           <NumberField label="Plafond revalorisation" value={config.valorisationPlafond} onChange={v => updateConfig({ valorisationPlafond: v })} suffix="%" />
@@ -1498,12 +1523,17 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifie
         </div>
 
         <p className="text-xs text-stone-500 mb-1">Type d'absence</p>
-        <div className="flex gap-2 mb-3">
-          <button type="button" onClick={() => setForm({ ...form, type: "CP" })} className="flex-1 py-2 rounded-lg text-sm"
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          <button type="button" onClick={() => setForm({ ...form, type: "CP" })} className="py-2 rounded-lg text-sm"
             style={{ backgroundColor: form.type === "CP" ? COLORS.ink : COLORS.stripe, color: form.type === "CP" ? "#fff" : COLORS.ink }}>🌴 Congés Payés</button>
-          <button type="button" onClick={() => setForm({ ...form, type: "RTT" })} className="flex-1 py-2 rounded-lg text-sm"
+          <button type="button" onClick={() => setForm({ ...form, type: "RTT" })} className="py-2 rounded-lg text-sm"
             style={{ backgroundColor: form.type === "RTT" ? COLORS.ink : COLORS.stripe, color: form.type === "RTT" ? "#fff" : COLORS.ink }}>📅 RTT</button>
+          <button type="button" onClick={() => setForm({ ...form, type: "PontOffert" })} className="py-2 rounded-lg text-sm"
+            style={{ backgroundColor: form.type === "PontOffert" ? COLORS.ink : COLORS.stripe, color: form.type === "PontOffert" ? "#fff" : COLORS.ink }}>🌉 Pont offert</button>
+          <button type="button" onClick={() => setForm({ ...form, type: "Formation" })} className="py-2 rounded-lg text-sm"
+            style={{ backgroundColor: form.type === "Formation" ? COLORS.ink : COLORS.stripe, color: form.type === "Formation" ? "#fff" : COLORS.ink }}>🎓 Formation</button>
         </div>
+        <p className="text-xs text-stone-400 mb-3">Pont offert : sans impact sur le solde RTT/CP ni sur les TR. Formation : sans impact sur le solde RTT/CP, mais déduit du nombre de TR.</p>
 
         {!editingJourId && (
           <>
