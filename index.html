@@ -572,12 +572,13 @@ function Warning({ children }) {
   </p>);
 }
 
-function SyncPanel({ binConfig, onConnect, onDisconnect, currentState, onClose }) {
+function SyncPanel({ binConfig, onConnect, onDisconnect, onImport, currentState, onClose }) {
   const [apiKey, setApiKey] = useState("");
   const [binId, setBinId] = useState("");
   const [mode, setMode] = useState("create");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
 
   async function handleConnect(e) {
     e.preventDefault();
@@ -599,11 +600,39 @@ function SyncPanel({ binConfig, onConnect, onDisconnect, currentState, onClose }
     setBusy(false);
   }
 
+  async function handleImport() {
+    setBusy(true); setError(""); setInfo("");
+    try {
+      const record = await jsonBinRead(binConfig);
+      onImport(record);
+      setInfo("Données importées depuis JSONBin.");
+    } catch (err) {
+      setError("Import impossible.");
+    }
+    setBusy(false);
+  }
+  async function handleExport() {
+    setBusy(true); setError(""); setInfo("");
+    try {
+      await jsonBinWrite(binConfig, currentState);
+      setInfo("Données exportées vers JSONBin.");
+    } catch (err) {
+      setError("Export impossible.");
+    }
+    setBusy(false);
+  }
+
   if (binConfig) {
     return (
       <Card>
         <p className="text-sm font-medium mb-1">Synchronisation cloud active</p>
         <p className="text-xs text-stone-400 mb-3 font-mono">Bin ID : {binConfig.binId}</p>
+        <div className="flex gap-2 mb-2">
+          <button onClick={handleImport} disabled={busy} className="flex-1 py-2 rounded-lg text-xs text-white disabled:opacity-50" style={{ backgroundColor: COLORS.accent }}>⬇️ Importer depuis JSONBin</button>
+          <button onClick={handleExport} disabled={busy} className="flex-1 py-2 rounded-lg text-xs text-white disabled:opacity-50" style={{ backgroundColor: COLORS.ink }}>⬆️ Exporter vers JSONBin</button>
+        </div>
+        {info && <p className="text-xs mb-2" style={{ color: COLORS.gain }}>{info}</p>}
+        {error && <p className="text-xs mb-2" style={{ color: COLORS.loss }}>{error}</p>}
         <div className="flex gap-2">
           <button onClick={() => { onDisconnect(); onClose(); }} className="text-xs" style={{ color: COLORS.loss }}>Déconnecter</button>
           <button onClick={onClose} className="text-xs" style={{ color: COLORS.accent }}>Fermer</button>
@@ -695,6 +724,11 @@ function App() {
     setBinConfigState(null);
     saveBinConfig(null);
     setSyncStatus("idle");
+  }
+  function appliquerImport(record) {
+    const merged = { ...DEFAULT_STATE, ...record, config: { ...DEFAULT_STATE.config, ...(record.config || {}) } };
+    setState(merged);
+    saveState(merged);
   }
 
   function updateConfig(patch) { persist({ ...state, config: { ...state.config, ...patch } }); }
@@ -827,7 +861,7 @@ function App() {
         </p>
         {showSync && (
           <div className="mt-2">
-            <SyncPanel binConfig={binConfig} onConnect={connecterSync} onDisconnect={deconnecterSync} currentState={state} onClose={() => setShowSync(false)} />
+            <SyncPanel binConfig={binConfig} onConnect={connecterSync} onDisconnect={deconnecterSync} onImport={appliquerImport} currentState={state} onClose={() => setShowSync(false)} />
           </div>
         )}
       </div>
@@ -1087,8 +1121,14 @@ function EstimationTab({ nicolas, joursPris, config, updateConfig, archives, ajo
     const rttMensuelEstim = calculRTTMensuel(annee, joursPris, config.rttBaseAnnuel, nicolas ? nicolas.dateEntree : null);
     const primeVacances = primeMontant(config.primeVacancesPct, config.moisPrimeVacances, annee);
     const primeNoel = primeMontant(config.primeNoelPct, config.moisPrimeNoel, annee);
+    const moisDetailAvecPrimes = estimationBase.moisDetail.map(function(m) {
+      let ajout = 0;
+      if (m.mois === Number(config.moisPrimeVacances)) ajout += (primeVacances || 0);
+      if (m.mois === Number(config.moisPrimeNoel)) ajout += (primeNoel || 0);
+      return ajout > 0 ? { ...m, totalMois: round2(m.totalMois + ajout) } : m;
+    });
     const totalGeneralAvecPrimes = round2(estimationBase.totalGeneral + (primeVacances || 0) + (primeNoel || 0));
-    estimation = { ...estimationBase, rttMensuel: rttMensuelEstim, primeVacances: primeVacances, primeNoel: primeNoel, totalGeneral: totalGeneralAvecPrimes };
+    estimation = { ...estimationBase, moisDetail: moisDetailAvecPrimes, rttMensuel: rttMensuelEstim, primeVacances: primeVacances, primeNoel: primeNoel, totalGeneral: totalGeneralAvecPrimes };
   } catch (e) {
     if (erreurCalcul !== e.message) setErreurCalcul(e.message);
   }
@@ -1171,13 +1211,6 @@ function EstimationTab({ nicolas, joursPris, config, updateConfig, archives, ajo
               </div>
             );
           })}
-        </div>
-        <div className="grid grid-cols-5 gap-1 items-center mt-2 pt-2 border-t border-stone-200 px-1">
-          <span className="text-xs font-semibold">Total</span>
-          <span className="font-mono text-xs font-semibold">{formatEUR(estimation.totalSalaire)}</span>
-          <span className="font-mono text-xs font-semibold">{formatEUR(estimation.totalPrime)}</span>
-          <span className="font-mono text-xs font-semibold">TR : {estimation.totalTickets}</span>
-          <span className="font-mono text-xs font-semibold">{formatEUR(estimation.totalGeneral)}</span>
         </div>
         {estimation.nbMoisEstimes > 0 && <p className="text-xs text-stone-400 mt-2">* mois estimé (donnée absente dans Salaires)</p>}
       </Card>
