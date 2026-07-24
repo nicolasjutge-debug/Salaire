@@ -94,7 +94,7 @@ const DEFAULT_STATE = {
     ticketNombreMois: 18, ticketValeur: 12.20, ticketPartSalarialePct: 40,
     valorisationConventionDate: "2025-08-01",
     baseConventionnelleClasse3: 2089.17, croissanceBaseMoyenne: 1.74, valorisationTauxDepart: 9, valorisationIncrementAnnuel: 1.5, valorisationPlafond: 15,
-    ratioBrutSurBase: 1.085, ratioNetSurBrut: 0.723, ratioNetFiscalSurBrut: 0.858,
+    ratioBrutSurBase: 1.489, ratioNetSurBrut: 0.723, ratioNetFiscalSurBrut: 0.8,
     mutuelleConjointMensuel: 48.08,
     tauxPAS: 2.2,
     abonnementTransportMensuel: 56, remboursementTransportPct: 50,
@@ -1024,25 +1024,25 @@ function SalairesTab({ personnes, updatePersonnes, config, updateConfig, joursPr
                     className="font-mono w-full border border-stone-300 rounded px-1 py-1 text-xs" />
                 </div>
                 {mois === 1 && personneId === "nicolas" && (
-                  <div className="flex items-center gap-2 mt-1 px-1">
-                    <span className="text-xs text-stone-400 flex-1">📈 Augmentation générale (janvier, Nicolas)</span>
+                  <div className="mt-1 mx-1 px-2 py-1.5 rounded-lg flex items-center gap-2" style={{ backgroundColor: "#EAF0F5", border: "1px solid " + COLORS.accent }}>
+                    <span className="text-xs flex-1" style={{ color: COLORS.accent }}>📈 Augmentation générale (janvier)</span>
                     <input type="number" step="0.1" value={e.augmentationPct === undefined ? "" : e.augmentationPct}
                       placeholder="—"
                       title="Augmentation générale en %, appliquée au salaire de base à partir de janvier et propagée aux mois suivants estimés."
                       onChange={ev => updateMois(mois, "augmentationPct", ev.target.value === "" ? "" : Number(ev.target.value))}
-                      className="font-mono border rounded px-1 py-1 text-xs" style={{ width: "4.5rem", borderColor: e.augmentationPct ? COLORS.accent : "#d6d3d1" }} />
-                    <span className="text-xs text-stone-400">%</span>
+                      className="font-mono border rounded px-1 py-1 text-xs text-right" style={{ width: "4rem", borderColor: COLORS.accent, backgroundColor: "#fff" }} />
+                    <span className="text-xs" style={{ color: COLORS.accent }}>%</span>
                   </div>
                 )}
                 {mois === 7 && (
-                  <div className="flex items-center gap-2 mt-1 px-1">
-                    <span className="text-xs text-stone-400 flex-1">🎁 Intéressement (juillet, une fois par an)</span>
+                  <div className="mt-1 mx-1 px-2 py-1.5 rounded-lg flex items-center gap-2" style={{ backgroundColor: "#FBF6EC", border: "1px solid " + COLORS.gold }}>
+                    <span className="text-xs flex-1" style={{ color: COLORS.gold }}>🎁 Intéressement (juillet, 1×/an)</span>
                     <input type="number" step="0.01" value={e.interessement === undefined ? "" : e.interessement}
                       placeholder="—"
                       title="Intéressement/participation versé en juillet — ajouté au net fiscal, au net payé et au total du mois."
                       onChange={ev => updateMois(mois, "interessement", ev.target.value === "" ? "" : Number(ev.target.value))}
-                      className="font-mono border rounded px-1 py-1 text-xs" style={{ width: "5.5rem", borderColor: e.interessement ? COLORS.gold : "#d6d3d1" }} />
-                    <span className="text-xs text-stone-400">€</span>
+                      className="font-mono border rounded px-1 py-1 text-xs text-right" style={{ width: "5rem", borderColor: COLORS.gold, backgroundColor: "#fff" }} />
+                    <span className="text-xs" style={{ color: COLORS.gold }}>€</span>
                   </div>
                 )}
               </div>
@@ -1604,6 +1604,48 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifie
 
       <Card>
         <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-medium">🌉 Historique Pont offert</p>
+          <p className="text-xs text-stone-400">{joursPris.filter(function(j){return j.type==="PontOffert";}).length} entrée(s)</p>
+        </div>
+        <div className="space-y-1">
+          {joursPris.filter(function(j){return j.type==="PontOffert";}).length === 0 && <p className="text-sm text-stone-400">Aucun pont offert saisi.</p>}
+          {joursPris.filter(function(j){return j.type==="PontOffert";}).map(function(j, i) {
+            return (
+              <Row key={j.id} index={i}>
+                <div><p className="font-mono">{formatDateFR(j.date)}{Number(j.duree)===0.5 ? " (1/2 j)" : ""}</p>{j.note && <p className="text-xs text-stone-400">{j.note}</p>}</div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => commencerEditionJour(j)}><EditIcon size={15} color={COLORS.accent} /></button>
+                  <button onClick={() => supprimerJour(j.id)}><TrashIcon color={COLORS.loss} /></button>
+                </div>
+              </Row>
+            );
+          })}
+        </div>
+      </Card>
+
+      <Card>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-medium">🎓 Historique Formation</p>
+          <p className="text-xs text-stone-400">{joursPris.filter(function(j){return j.type==="Formation";}).length} entrée(s)</p>
+        </div>
+        <div className="space-y-1">
+          {joursPris.filter(function(j){return j.type==="Formation";}).length === 0 && <p className="text-sm text-stone-400">Aucune formation saisie.</p>}
+          {joursPris.filter(function(j){return j.type==="Formation";}).map(function(j, i) {
+            return (
+              <Row key={j.id} index={i}>
+                <div><p className="font-mono">{formatDateFR(j.date)}{Number(j.duree)===0.5 ? " (1/2 j)" : ""}</p>{j.note && <p className="text-xs text-stone-400">{j.note}</p>}</div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => commencerEditionJour(j)}><EditIcon size={15} color={COLORS.accent} /></button>
+                  <button onClick={() => supprimerJour(j.id)}><TrashIcon color={COLORS.loss} /></button>
+                </div>
+              </Row>
+            );
+          })}
+        </div>
+      </Card>
+
+      <Card>
+        <div className="flex items-center justify-between mb-3">
           <p className="text-sm font-medium">{editingJourId ? "Modifier une entrée" : "Poser une absence"}</p>
           <button onClick={() => exporterICS(joursPris)} disabled={joursPris.length === 0} className="text-xs flex items-center gap-1 rounded-full px-3 py-1.5 disabled:opacity-40" style={{ backgroundColor: COLORS.stripe }}>
             <DownloadIcon size={13} /> Exporter (.ics)
@@ -1701,7 +1743,14 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifie
 
           {blackoutsPlage.length > 0 && <Warning>{blackoutsPlage.length > 1 ? blackoutsPlage.length + " jours tombent" : "Cette date tombe"} dans une période bloquée{blackoutsPlage[0].label ? " : " + blackoutsPlage[0].label : ""}</Warning>}
           {tropConsecutifs && <Warning>Dépasse {maxRtt} RTT consécutifs</Warning>}
-          {chevauchements.length > 0 && <Warning>Chevauchement : {chevauchements.length > 1 ? chevauchements.length + " dates ont" : "cette date a"} déjà une absence saisie — bloqué</Warning>}
+          {chevauchements.length > 0 && (
+            <Warning>
+              Chevauchement — bloqué. {chevauchements.map(function(d) {
+                const existant = joursPris.filter(function(j){ return j.date === d && (!editingJourId || j.id !== editingJourId); })[0];
+                return formatDateFR(d) + (existant ? " (" + existant.type + " déjà saisi)" : "");
+              }).join(", ")}. Modifie ou supprime cette entrée dans l'historique ci-dessus si besoin.
+            </Warning>
+          )}
           {soldeNegatif && <Warning>Solde {form.type} insuffisant ({formatJours(soldeActuelType)} j disponibles) — bloqué</Warning>}
 
           <div className="col-span-2 flex gap-2">
