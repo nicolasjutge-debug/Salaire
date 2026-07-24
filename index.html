@@ -282,41 +282,55 @@ function estimerAnnee(personne, annee, joursPris, config, suiviConges) {
 
   const dateValorisation = config.valorisationConventionDate || "2025-08-01";
   const moisDetail = [];
-  let totalSalaire = 0, totalPrime = 0, totalTR = 0, totalTickets = 0, totalRTT = 0, totalCP = 0, totalBrut = 0, totalNet = 0, totalNetFiscal = 0, totalPAS = 0, totalTransport = 0;
+  let totalSalaire = 0, totalPrime = 0, totalTR = 0, totalTickets = 0, totalRTT = 0, totalCP = 0, totalBrut = 0, totalNet = 0, totalNetFiscal = 0, totalPAS = 0, totalTransport = 0, totalInteressement = 0;
+  let baseCourante = dernierConnu;
 
   for (let m = 1; m <= 12; m++) {
     const key = annee + "-" + String(m).padStart(2, "0");
     const reel = src[key];
+    // Augmentation générale manuelle en % (Nicolas uniquement, saisie sur la ligne de janvier) :
+    // majore le salaire de base retenu pour les mois estimés, dès janvier et pour le reste de l'année.
+    const augmentationPct = (reel && reel.augmentationPct !== undefined && reel.augmentationPct !== "" && reel.augmentationPct !== null) ? Number(reel.augmentationPct) : 0;
+    if (m === 1 && augmentationPct && baseCourante != null) baseCourante = round2(baseCourante * (1 + augmentationPct / 100));
     const estimeSalaire = !(reel && reel.salaire);
     const apresValorisation = key >= dateValorisation.slice(0,7);
-    let salaireBase = estimeSalaire ? dernierConnu : Number(reel.salaire);
+    let salaireBase = estimeSalaire ? baseCourante : Number(reel.salaire);
+    if (!estimeSalaire) baseCourante = salaireBase;
     const valorisationAppliquee = false;
     const primeExpInfo = primeExperienceMensuelle(annee, m, config);
     const tauxValoAnnee = primeExpInfo.taux;
     salaireBase = salaireBase || 0;
     const baseConv = primeExpInfo.base;
     const primeExperience = primeExpInfo.montant;
+    // Intéressement/participation : un seul versement par an, saisi sur la ligne de juillet.
+    // Il s'ajoute au net fiscal (et au net payé) du mois, que celui-ci soit estimé ou réel.
+    const interessementMois = (reel && reel.interessement) ? Number(reel.interessement) : 0;
     const brutEstime = round2(salaireBase * Number(config.ratioBrutSurBase||1));
     const netFiscalRatio = round2(brutEstime * Number(config.ratioNetFiscalSurBrut||1));
-    const netFiscalEstime = (reel && reel.netFiscal) ? Number(reel.netFiscal) : netFiscalRatio;
+    const netFiscalBase = (reel && reel.netFiscal) ? Number(reel.netFiscal) : netFiscalRatio;
+    const netFiscalEstime = round2(netFiscalBase + interessementMois);
     const pasRatio = round2(netFiscalEstime * Number(config.tauxPAS||0) / 100);
     const pasEstime = (reel && reel.ps) ? Number(reel.ps) : pasRatio;
     const mutuelleConjoint = Number(config.mutuelleConjointMensuel) || 0;
-    const netEstimeRatio = round2(brutEstime * Number(config.ratioNetSurBrut||1) - mutuelleConjoint);
+    const netEstimeRatioBase = round2(brutEstime * Number(config.ratioNetSurBrut||1) - mutuelleConjoint);
     const netPayeReel = (reel && reel.netPaye) ? Number(reel.netPaye) : null;
-    const netEstime = netPayeReel != null ? netPayeReel : netEstimeRatio;
+    const netEstime = round2((netPayeReel != null ? netPayeReel : netEstimeRatioBase) + interessementMois);
     const netEstDepuisReel = netPayeReel != null;
     const dateEffetTransport = config.abonnementTransportDateEffet || "2099-01-01";
     const abonnementApplicable = key >= dateEffetTransport.slice(0,7) ? Number(config.abonnementTransportSuivant||config.abonnementTransportMensuel||0) : Number(config.abonnementTransportMensuel||0);
     const primeTransport = round2(abonnementApplicable * Number(config.remboursementTransportPct||0) / 100);
 
+    // Jours ouvrés = jours de semaine hors jours fériés (week-ends + JF exclus par joursOuvresDansMois)
     const joursOuvres = joursOuvresDansMois(annee, m);
     const rttPrisMois = suiviConges === false ? 0 : joursPris.filter(function(j){ return j.date.slice(0,7)===key && j.type==="RTT"; }).reduce(function(s,j){return s+Number(j.duree);},0);
     const cpPrisMois = suiviConges === false ? 0 : joursPris.filter(function(j){ return j.date.slice(0,7)===key && j.type==="CP"; }).reduce(function(s,j){return s+Number(j.duree);},0);
-    const estJourOuvre = function(j) { const js = parseISO(j.date).getDay(); return js !== 0 && js !== 6; };
+    // TR du mois courant = jours ouvrés de CE mois, moins les RTT/CP/Formation/Pont offert posés en
+    // jour ouvré (hors week-ends et jours fériés) le MOIS PRÉCÉDENT — le nombre de TR attribués ce
+    // mois-ci dépend des jours réellement travaillés le mois précédent, comme sur le bulletin réel.
+    const estJourOuvreTR = function(j) { const d = parseISO(j.date); const js = d.getDay(); return js !== 0 && js !== 6 && joursFeriesFrance(d.getFullYear()).indexOf(j.date) === -1; };
+    const deduitTR = function(j) { return (j.type === "RTT" || j.type === "CP" || j.type === "Formation" || j.type === "PontOffert") && estJourOuvreTR(j); };
     const moisPrec = m === 1 ? { a: annee - 1, m: 12 } : { a: annee, m: m - 1 };
     const keyPrec = moisPrec.a + "-" + String(moisPrec.m).padStart(2, "0");
-    const deduitTR = function(j) { return (j.type === "RTT" || j.type === "CP" || j.type === "Formation") && estJourOuvre(j); };
     const rttPrisOuvre = suiviConges === false ? 0 : joursPris.filter(function(j){ return j.date.slice(0,7)===keyPrec && deduitTR(j); }).reduce(function(s,j){return s+Number(j.duree);},0);
     const cpPrisOuvre = 0;
     const joursTravaillesCalcule = Math.max(0, joursOuvres - rttPrisOuvre - cpPrisOuvre);
@@ -326,7 +340,7 @@ function estimerAnnee(personne, annee, joursPris, config, suiviConges) {
     const joursDeduits = rttPrisOuvre + cpPrisOuvre;
     const valeurTR = round2(joursTravailles * (Number(config.ticketValeur)||0) * (Number(config.ticketPartSalarialePct)||0) / 100);
     const valeurTREmployeur = round2(joursTravailles * (Number(config.ticketValeur)||0) * (100 - (Number(config.ticketPartSalarialePct)||0)) / 100);
-    const totalMois = round2(salaireBase + primeExperience + primeTransport);
+    const totalMois = round2(salaireBase + primeExperience + primeTransport + interessementMois);
 
     moisDetail.push({
       mois: m, key: key, estimeSalaire: estimeSalaire, apresValorisation: apresValorisation, valorisationAppliquee: valorisationAppliquee,
@@ -335,10 +349,12 @@ function estimerAnnee(personne, annee, joursPris, config, suiviConges) {
       baseConventionnelle: baseConv, tauxValorisationAnnee: tauxValoAnnee,
       joursOuvres: joursOuvres, rttPris: rttPrisMois, cpPris: cpPrisMois, joursDeduits: joursDeduits, joursTravailles: joursTravailles,
       ticketsEstimes: joursTravailles, trEstManuel: trEstManuel, joursTravaillesCalcule: joursTravaillesCalcule, valeurTR: valeurTR, valeurTREmployeur: valeurTREmployeur, totalMois: totalMois,
+      interessement: interessementMois, augmentationPct: (m === 1 ? augmentationPct : 0),
     });
     totalSalaire += salaireBase; totalPrime += primeExperience; totalTR += valeurTR; totalTickets += joursTravailles;
     totalRTT += rttPrisMois; totalCP += cpPrisMois; totalBrut += brutEstime; totalNet += netEstime;
     totalNetFiscal += netFiscalEstime; totalPAS += pasEstime; totalTransport += primeTransport;
+    totalInteressement += interessementMois;
   }
 
   const primeExpInfoAnnuel = primeExperienceMensuelle(annee, 12, config);
@@ -349,7 +365,8 @@ function estimerAnnee(personne, annee, joursPris, config, suiviConges) {
     totalTickets: totalTickets, totalRTT: totalRTT, totalCP: totalCP,
     totalBrut: round2(totalBrut), totalNet: round2(totalNet),
     totalNetFiscal: round2(totalNetFiscal), totalPAS: round2(totalPAS), totalTransport: round2(totalTransport),
-    totalGeneral: round2(totalSalaire + totalPrime + totalTransport),
+    totalInteressement: round2(totalInteressement),
+    totalGeneral: round2(totalSalaire + totalPrime + totalTransport + totalInteressement),
     dernierConnu: dernierConnu,
     nbMoisEstimes: moisDetail.filter(function(m){return m.estimeSalaire;}).length,
     parametres: {
@@ -375,7 +392,7 @@ function archiverAnnee(estimation) {
   texte += "- Salaire de base pour les mois non renseignés : dernière valeur connue (" + formatEUR(estimation.dernierConnu||0) + ")\n";
   texte += "- Prime d'expérience : base " + formatEUR(estimation.parametres.baseConventionnelleClasse3) + " × taux " + estimation.parametres.tauxPrimeExperience + " % (= taux de revalorisation " + estimation.annee + ")\n";
   texte += "- Base conventionnelle Classe 3 : " + formatEUR(estimation.parametres.baseConventionnelleClasse3) + ", revalorisée à " + estimation.parametres.valorisationTauxAnnee + " % pour " + estimation.annee + " (mois estimés à partir de " + formatDateFR(estimation.parametres.valorisationConventionDate) + ")\n";
-  texte += "- Titre-restaurant : 1 par jour ouvré réellement travaillé (jours ouvrés - RTT pris - CP pris), valeur " + formatEUR(estimation.parametres.ticketValeur) + ", part salariale " + estimation.parametres.ticketPartSalarialePct + " %\n\n";
+  texte += "- Titre-restaurant : 1 par jour ouvré réellement travaillé (jours ouvrés du mois - RTT/CP/Formation/Pont offert posés le mois précédent), valeur " + formatEUR(estimation.parametres.ticketValeur) + ", part salariale " + estimation.parametres.ticketPartSalarialePct + " %\n\n";
   texte += "DETAIL MENSUEL\n";
   texte += "Mois          Salaire      Prime exp.   Jours trav.  TR (valeur)   Total mois\n";
   estimation.moisDetail.forEach(function(m) {
@@ -387,10 +404,11 @@ function archiverAnnee(estimation) {
   texte += "Total prime d'expérience : " + formatEUR(estimation.totalPrime) + "\n";
   texte += "Total général (salaire + prime) : " + formatEUR(estimation.totalGeneral) + "\n";
   texte += "Total titres-restaurant : " + formatEUR(estimation.totalTR) + " (" + estimation.totalTickets + " jours travaillés)\n";
-  texte += "Brut annuel estimé : " + formatEUR(estimation.totalBrut) + " — Net estimé : " + formatEUR(estimation.totalNet) + "\n";
+  texte += "Brut annuel estimé : " + formatEUR(estimation.totalBrut) + " — Net payé estimé : " + formatEUR(estimation.totalNet) + "\n";
   texte += "Net fiscal estimé : " + formatEUR(estimation.totalNetFiscal) + " — PAS estimé : " + formatEUR(estimation.totalPAS) + "\n";
   texte += "Mutuelle conjoint (annuel) : " + formatEUR(estimation.parametres.mutuelleConjointMensuel * 12) + " — Prime transport (annuel) : " + formatEUR(estimation.totalTransport) + "\n";
   texte += "Prime de vacances : " + (estimation.primeVacances != null ? formatEUR(estimation.primeVacances) : "à renseigner") + " — Prime de Noël : " + (estimation.primeNoel != null ? formatEUR(estimation.primeNoel) : "à renseigner") + "\n";
+  if (estimation.totalInteressement) texte += "Intéressement/participation inclus : " + formatEUR(estimation.totalInteressement) + "\n";
   texte += "Total RTT pris : " + estimation.totalRTT + " j — Total CP pris : " + estimation.totalCP + " j\n";
   texte += "Mois estimés (données manquantes) : " + estimation.nbMoisEstimes + " / 12\n";
   if (estimation.rttMensuel) {
@@ -948,11 +966,11 @@ function SalairesTab({ personnes, updatePersonnes, config, updateConfig, joursPr
 
   const estimationNicolas = personneId === "nicolas" ? estimerAnnee(personne, annee, joursPris, config) : null;
 
-  const totaux = { netPaye: 0, salaire: 0, netFiscal: 0, ps: 0 };
+  const totaux = { netPaye: 0, salaire: 0, netFiscal: 0, ps: 0, interessement: 0 };
   for (let m = 1; m <= 12; m++) {
     const key = annee + "-" + String(m).padStart(2, "0");
     const e = personne.entreesMensuelles[key];
-    if (e) { totaux.netPaye += Number(e.netPaye) || 0; totaux.salaire += Number(e.salaire) || 0; totaux.netFiscal += Number(e.netFiscal) || 0; totaux.ps += Number(e.ps) || 0; }
+    if (e) { totaux.netPaye += Number(e.netPaye) || 0; totaux.salaire += Number(e.salaire) || 0; totaux.netFiscal += Number(e.netFiscal) || 0; totaux.ps += Number(e.ps) || 0; totaux.interessement += Number(e.interessement) || 0; }
   }
 
   return (
@@ -972,7 +990,13 @@ function SalairesTab({ personnes, updatePersonnes, config, updateConfig, joursPr
           <p className="font-display text-lg">{annee}</p>
           <button onClick={() => setAnnee(annee+1)} className="px-3 py-1 text-sm rounded-lg" style={{ backgroundColor: COLORS.stripe }}>▶</button>
         </div>
-        {personneId === "nicolas" && <p className="text-xs text-stone-400 mb-2">Champs vides = valeur estimée automatiquement (affichée en filigrane, arrondie). Saisis le bulletin réel pour la remplacer.</p>}
+        {personneId === "nicolas" && (
+          <div className="text-xs text-stone-400 mb-2 space-y-1">
+            <p>Champs vides = valeur estimée automatiquement (filigrane). Saisis le bulletin réel pour la remplacer.</p>
+            <p>🎁 Intéressement (juillet uniquement) et 📈 Augmentation générale (janvier uniquement) se saisissent sous la ligne du mois concerné, ci-dessous.</p>
+            <p>⚠️ Si le salaire a changé depuis 07/2026, saisis directement la nouvelle valeur dans la colonne <b>Salaire</b> du mois concerné.</p>
+          </div>
+        )}
         <div className="grid grid-cols-4 gap-1 text-xs text-stone-500 mb-1 px-1">
           <span>Mois</span><span>💰 Salaire</span><span>🧾 N.fiscal</span><span>📉 PAS</span>
         </div>
@@ -983,20 +1007,44 @@ function SalairesTab({ personnes, updatePersonnes, config, updateConfig, joursPr
             const e = personne.entreesMensuelles[key] || {};
             const estMois = estimationNicolas ? estimationNicolas.moisDetail[i] : null;
             return (
-              <div key={mois} className="grid grid-cols-4 gap-1 items-center rounded-lg px-1 py-1" style={{ backgroundColor: i % 2 === 1 ? COLORS.stripe : "transparent" }}>
-                <span className="text-xs font-mono capitalize">{m.slice(0,3)}</span>
-                <input type="number" step="0.01" value={e.salaire === undefined ? "" : e.salaire}
-                  placeholder={estMois ? formatJours(estMois.salaireBase) : "—"}
-                  onChange={ev => updateMois(mois, "salaire", ev.target.value === "" ? "" : Number(ev.target.value))}
-                  className="font-mono w-full border border-stone-300 rounded px-1 py-1 text-xs" />
-                <input type="number" step="0.01" value={e.netFiscal === undefined ? "" : e.netFiscal}
-                  placeholder={estMois ? formatJours(estMois.netFiscalEstime) : "—"}
-                  onChange={ev => updateMois(mois, "netFiscal", ev.target.value === "" ? "" : Number(ev.target.value))}
-                  className="font-mono w-full border border-stone-300 rounded px-1 py-1 text-xs" />
-                <input type="number" step="0.01" value={e.ps === undefined ? "" : e.ps}
-                  placeholder={estMois ? formatJours(estMois.pasEstime) : "—"}
-                  onChange={ev => updateMois(mois, "ps", ev.target.value === "" ? "" : Number(ev.target.value))}
-                  className="font-mono w-full border border-stone-300 rounded px-1 py-1 text-xs" />
+              <div key={mois} className="rounded-lg px-1 py-1" style={{ backgroundColor: i % 2 === 1 ? COLORS.stripe : "transparent" }}>
+                <div className="grid grid-cols-4 gap-1 items-center">
+                  <span className="text-xs font-mono capitalize">{m.slice(0,3)}</span>
+                  <input type="number" step="0.01" value={e.salaire === undefined ? "" : e.salaire}
+                    placeholder={estMois ? formatJours(estMois.salaireBase) : "—"}
+                    onChange={ev => updateMois(mois, "salaire", ev.target.value === "" ? "" : Number(ev.target.value))}
+                    className="font-mono w-full border border-stone-300 rounded px-1 py-1 text-xs" />
+                  <input type="number" step="0.01" value={e.netFiscal === undefined ? "" : e.netFiscal}
+                    placeholder={estMois ? formatJours(estMois.netFiscalEstime) : "—"}
+                    onChange={ev => updateMois(mois, "netFiscal", ev.target.value === "" ? "" : Number(ev.target.value))}
+                    className="font-mono w-full border border-stone-300 rounded px-1 py-1 text-xs" />
+                  <input type="number" step="0.01" value={e.ps === undefined ? "" : e.ps}
+                    placeholder={estMois ? formatJours(estMois.pasEstime) : "—"}
+                    onChange={ev => updateMois(mois, "ps", ev.target.value === "" ? "" : Number(ev.target.value))}
+                    className="font-mono w-full border border-stone-300 rounded px-1 py-1 text-xs" />
+                </div>
+                {mois === 1 && personneId === "nicolas" && (
+                  <div className="flex items-center gap-2 mt-1 px-1">
+                    <span className="text-xs text-stone-400 flex-1">📈 Augmentation générale (janvier, Nicolas)</span>
+                    <input type="number" step="0.1" value={e.augmentationPct === undefined ? "" : e.augmentationPct}
+                      placeholder="—"
+                      title="Augmentation générale en %, appliquée au salaire de base à partir de janvier et propagée aux mois suivants estimés."
+                      onChange={ev => updateMois(mois, "augmentationPct", ev.target.value === "" ? "" : Number(ev.target.value))}
+                      className="font-mono border rounded px-1 py-1 text-xs" style={{ width: "4.5rem", borderColor: e.augmentationPct ? COLORS.accent : "#d6d3d1" }} />
+                    <span className="text-xs text-stone-400">%</span>
+                  </div>
+                )}
+                {mois === 7 && (
+                  <div className="flex items-center gap-2 mt-1 px-1">
+                    <span className="text-xs text-stone-400 flex-1">🎁 Intéressement (juillet, une fois par an)</span>
+                    <input type="number" step="0.01" value={e.interessement === undefined ? "" : e.interessement}
+                      placeholder="—"
+                      title="Intéressement/participation versé en juillet — ajouté au net fiscal, au net payé et au total du mois."
+                      onChange={ev => updateMois(mois, "interessement", ev.target.value === "" ? "" : Number(ev.target.value))}
+                      className="font-mono border rounded px-1 py-1 text-xs" style={{ width: "5.5rem", borderColor: e.interessement ? COLORS.gold : "#d6d3d1" }} />
+                    <span className="text-xs text-stone-400">€</span>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -1007,6 +1055,7 @@ function SalairesTab({ personnes, updatePersonnes, config, updateConfig, joursPr
           <span className="font-mono text-xs font-semibold">{formatEUR(totaux.netFiscal)}</span>
           <span className="font-mono text-xs font-semibold">{formatEUR(totaux.ps)}</span>
         </div>
+        {totaux.interessement > 0 && <p className="text-xs mt-1" style={{color: COLORS.gold}}>🎁 Intéressement {annee} : {formatEUR(totaux.interessement)} inclus dans l'estimation.</p>}
       </Card>
 
       {personneId === "nicolas" && estimationNicolas && (
@@ -1032,7 +1081,7 @@ function SalairesTab({ personnes, updatePersonnes, config, updateConfig, joursPr
               );
             })}
           </div>
-          <p className="text-xs text-stone-400 mt-2">Nombre calculé automatiquement (jours ouvrés − CP − RTT) ; saisis une valeur pour corriger un mois précis — elle est mémorisée et recalcule automatiquement les montants. Champ vide = calcul auto.</p>
+          <p className="text-xs text-stone-400 mt-2">Nombre calculé automatiquement (jours ouvrés − RTT/CP/Formation/Pont offert posés le mois précédent) ; saisis une valeur pour corriger un mois précis — elle est mémorisée et recalcule automatiquement les montants. Champ vide = calcul auto.</p>
         </Card>
       )}
 
@@ -1163,14 +1212,18 @@ function EstimationTab({ nicolas, joursPris, config, updateConfig, archives, ajo
           <div><p className="text-xs" style={{ color: "#8FA69B" }}>Salaire</p><p className="font-mono text-sm">{formatEUR(estimation.totalSalaire)}</p></div>
           <div><p className="text-xs" style={{ color: "#8FA69B" }}>⭐ Prime exp.</p><p className="font-mono text-sm">{formatEUR(estimation.totalPrime)}</p></div>
           <div><p className="text-xs" style={{ color: "#8FA69B" }}>🍽️ TR</p><p className="font-mono text-sm">{formatEUR(estimation.totalTR)}</p></div>
+          {estimation.totalInteressement > 0 && <div className="col-span-3 mt-1 pt-1" style={{borderTop:"1px solid #33443d"}}>
+            <p className="text-xs" style={{ color: "#96793C" }}>🎯 Intéressement inclus</p>
+            <p className="font-mono text-sm" style={{color: "#96793C"}}>{formatEUR(estimation.totalInteressement)}</p>
+          </div>}
         </div>
         <div className="grid grid-cols-2 gap-2 mt-2 pt-2" style={{ borderTop: "1px solid #33443d" }}>
           <div><p className="text-xs" style={{ color: "#8FA69B" }}>Brut annuel estimé</p><p className="font-mono text-sm">{formatEUR(estimation.totalBrut)}</p></div>
-          <div><p className="text-xs" style={{ color: "#8FA69B" }}>🧾 Net estimé</p><p className="font-mono text-sm">{formatEUR(estimation.totalNet)}</p></div>
+          <div><p className="text-xs" style={{ color: "#8FA69B" }}>💶 Net payé estimé</p><p className="font-mono text-sm">{formatEUR(estimation.totalNet)}</p></div>
         </div>
         <div className="grid grid-cols-3 gap-2 mt-2 pt-2" style={{ borderTop: "1px solid #33443d" }}>
-          <div><p className="text-xs" style={{ color: "#8FA69B" }}>🧾 Net fiscal</p><p className="font-mono text-sm">{formatEUR(estimation.totalNetFiscal)}</p></div>
-          <div><p className="text-xs" style={{ color: "#8FA69B" }}>📉 PAS</p><p className="font-mono text-sm">{formatEUR(estimation.totalPAS)}</p></div>
+          <div><p className="text-xs" style={{ color: "#8FA69B" }}>🧾 Net fiscal estimé</p><p className="font-mono text-sm">{formatEUR(estimation.totalNetFiscal)}</p></div>
+          <div><p className="text-xs" style={{ color: "#8FA69B" }}>📉 PAS ({config.tauxPAS}%)</p><p className="font-mono text-sm">{formatEUR(estimation.totalPAS)}</p></div>
           <div><p className="text-xs" style={{ color: "#8FA69B" }}>🚌 Transport</p><p className="font-mono text-sm">{formatEUR(estimation.totalTransport)}</p></div>
         </div>
       </Card>
@@ -1196,18 +1249,18 @@ function EstimationTab({ nicolas, joursPris, config, updateConfig, archives, ajo
 
       <Card>
         <p className="text-sm font-medium mb-3">Tableau récapitulatif</p>
-        <div className="grid grid-cols-5 gap-1 text-xs text-stone-500 mb-1 px-1">
-          <span>Mois</span><span>Salaire</span><span>Prime</span><span>TR</span><span>Total</span>
+        <div className="grid gap-1 text-xs text-stone-500 mb-1 px-1" style={{gridTemplateColumns:"repeat(5,1fr)"}}>
+          <span>Mois</span><span>Salaire</span><span>Prime exp.</span><span>TR</span><span>Intéress.</span>
         </div>
         <div className="space-y-1">
           {estimation.moisDetail.map(function(m, i) {
             return (
-              <div key={m.mois} className="grid grid-cols-5 gap-1 items-center rounded-lg px-1 py-1.5" style={{ backgroundColor: i % 2 === 1 ? COLORS.stripe : "transparent" }}>
+              <div key={m.mois} className="grid gap-1 items-center rounded-lg px-1 py-1.5" style={{ backgroundColor: i % 2 === 1 ? COLORS.stripe : "transparent", gridTemplateColumns:"repeat(5,1fr)" }}>
                 <span className="text-xs font-mono capitalize">{MOIS_FR[m.mois-1].slice(0,3)}{m.estimeSalaire ? "*" : ""}</span>
                 <span className="font-mono text-xs">{formatEUR(m.salaireBase)}</span>
                 <span className="font-mono text-xs">{formatEUR(m.primeExperience)}</span>
-                <span className="font-mono text-xs">TR : {m.ticketsEstimes}</span>
-                <span className="font-mono text-xs font-semibold">{formatEUR(m.totalMois)}</span>
+                <span className="font-mono text-xs">TR {m.ticketsEstimes}j</span>
+                <span className="font-mono text-xs" style={{color: m.interessement ? COLORS.gold : "#a8a29e"}}>{m.interessement ? formatEUR(m.interessement) : "—"}</span>
               </div>
             );
           })}
@@ -1226,11 +1279,11 @@ function EstimationTab({ nicolas, joursPris, config, updateConfig, archives, ajo
               return (
                 <div key={m.mois} className="text-xs border-t border-stone-100 pt-2">
                   <p className="font-medium capitalize mb-1">{MOIS_FR[m.mois-1]} {annee}{m.estimeSalaire ? " (estimé)" : " (réel)"}</p>
-                  <p className="text-stone-500 font-mono">Salaire base : {formatEUR(m.salaireBase)}{m.valorisationAppliquee ? " (dont +" + m.tauxValorisationAnnee + "% valorisation " + annee + ")" : ""}</p>
+                  <p className="text-stone-500 font-mono">Salaire base : {formatEUR(m.salaireBase)}{m.augmentationPct ? " (dont +" + m.augmentationPct + "% augmentation générale " + annee + ")" : ""}</p>
                   <p className="text-stone-500 font-mono">Prime d'expérience : base {formatEUR(m.baseConventionnelle)} × taux {m.tauxValorisationAnnee}% ({annee}) = {formatEUR(m.primeExperience)}</p>
-                  <p className="text-stone-500 font-mono">Jours ouvrés : {m.joursOuvres} − 🌴 CP {m.cpPris} − 📅 RTT {m.rttPris} − 🚫 autres absences 0 (non gérées) = jours déduits {m.joursDeduits} → {m.joursTravailles} jours travaillés</p>
+                  <p className="text-stone-500 font-mono">Jours ouvrés : {m.joursOuvres} − {m.joursDeduits} (RTT/CP/Formation/Pont offert du mois précédent) = {m.joursTravailles} jours travaillés</p>
                   <p className="text-stone-500 font-mono">🍽️ TR attribués : {m.ticketsEstimes} — part salariale {formatEUR(config.ticketValeur)}×{config.ticketPartSalarialePct}%=💶{formatEUR(m.valeurTR)} / part employeur {formatEUR(m.valeurTREmployeur)}</p>
-                  <p className="text-stone-500 font-mono">🧾 Net fiscal estimé : {formatEUR(m.brutEstime)} × {config.ratioNetFiscalSurBrut} = {formatEUR(m.netFiscalEstime)} — 📉 PAS : × {config.tauxPAS}% = {formatEUR(m.pasEstime)}</p>
+                  <p className="text-stone-500 font-mono">🧾 Net fiscal estimé : {formatEUR(m.brutEstime)} × {config.ratioNetFiscalSurBrut}{m.interessement ? " + 🎁 intéressement " + formatEUR(m.interessement) : ""} = {formatEUR(m.netFiscalEstime)} — 📉 PAS : × {config.tauxPAS}% = {formatEUR(m.pasEstime)}</p>
                   <p className="text-stone-500 font-mono">Déductions : mutuelle conjoint {formatEUR(m.mutuelleConjoint)} — 🚌 Transport (50% de {formatEUR(config.abonnementTransportMensuel)}) : +{formatEUR(m.primeTransport)}</p>
                   <p className="font-medium mt-1">Total du mois : {formatEUR(m.totalMois)}</p>
                 </div>
@@ -1245,8 +1298,9 @@ function EstimationTab({ nicolas, joursPris, config, updateConfig, archives, ajo
         <ul className="text-xs text-stone-500 space-y-1.5 list-none">
           <li>• Pour les mois sans salaire renseigné, dernière valeur connue utilisée : {estimation.dernierConnu != null ? formatEUR(estimation.dernierConnu) : "aucune donnée disponible"}.</li>
           <li>• Les mois estimés à partir de {formatDateFR(config.valorisationConventionDate)} appliquent le taux de revalorisation de l'année en cours au salaire de référence utilisé.</li>
-          <li>• Les titres-restaurant supposent 1 titre par jour ouvré réellement travaillé (jours ouvrés du mois, moins RTT et CP posés).</li>
-          <li>• Les jours fériés ne sont pas déduits des jours ouvrés (seuls samedis/dimanches sont exclus) — le nombre de jours travaillés peut donc être légèrement surestimé les mois avec jour férié.</li>
+          <li>• Les titres-restaurant supposent 1 titre par jour ouvré réellement travaillé, sur la base des RTT/CP/Formation/Pont offert posés le mois précédent (comme sur le bulletin réel).</li>
+          <li>• Les jours ouvrés excluent samedis, dimanches et jours fériés (calendrier France métropolitaine, recalculé chaque année).</li>
+          <li>• Une augmentation générale (%) peut être saisie sur la ligne de janvier, pour Nicolas uniquement : elle majore le salaire de base retenu pour les mois estimés à partir de janvier. Un intéressement (€), une seule fois par an, peut être saisi sur la ligne de juillet : il s'ajoute au net fiscal et au net payé du mois, qu'il soit estimé ou déjà renseigné avec des données réelles.</li>
           <li>• Brut et net sont des estimations dérivées du salaire mensuel via des ratios observés sur tes bulletins réels (brut ≈ ×{config.ratioBrutSurBase}, net ≈ ×{config.ratioNetSurBrut} du brut) — ils n'intègrent pas d'éventuels éléments variables (heures sup, primes exceptionnelles).</li>
         </ul>
       </Card>
@@ -1254,13 +1308,13 @@ function EstimationTab({ nicolas, joursPris, config, updateConfig, archives, ajo
       <Card>
         <p className="text-sm font-medium mb-3">Formules utilisées</p>
         <div className="text-xs text-stone-500 space-y-1.5 font-mono">
-          <p>Salaire mensuel = donnée réelle, ou dernière connue × (1+valorisation) si mois estimé après {formatDateFR(config.valorisationConventionDate)}</p>
+          <p>Salaire mensuel = donnée réelle du bulletin, ou dernière valeur connue (majorée de l'augmentation générale % saisie en janvier, Nicolas uniquement)</p>
           <p>Prime d'expérience = Base conventionnelle Classe 3 ({formatEUR(config.baseConventionnelleClasse3)}) × Taux de revalorisation de l'année</p>
           <p>Brut estimé = Salaire mensuel × {config.ratioBrutSurBase} (ratio observé sur bulletins réels)</p>
-          <p>Net estimé = Brut estimé × {config.ratioNetSurBrut} (ratio observé sur bulletins réels) − Mutuelle conjoint</p>
-          <p>Net fiscal estimé = Brut estimé × {config.ratioNetFiscalSurBrut} — PAS = Net fiscal × Taux PAS ({config.tauxPAS}%)</p>
+          <p>Net estimé = Brut estimé × {config.ratioNetSurBrut} (ratio observé sur bulletins réels) − Mutuelle conjoint + Intéressement (juillet)</p>
+          <p>Net fiscal estimé = (Brut estimé × {config.ratioNetFiscalSurBrut}, ou net fiscal réel saisi) + Intéressement (juillet) — PAS = Net fiscal × Taux PAS ({config.tauxPAS}%)</p>
           <p>Prime transport = Abonnement STAR/Keolis × Remboursement ({config.remboursementTransportPct}%)</p>
-          <p>Jours travaillés (= nb TR) = Jours ouvrés du mois − CP pris − RTT pris (week-ends jamais déduits deux fois)</p>
+          <p>Jours travaillés (= nb TR) = Jours ouvrés du mois (hors week-ends et jours fériés) − RTT/CP/Formation/Pont offert posés le mois précédent</p>
           <p>Valeur TR = Nb TR × Valeur unitaire × Part salariale ({config.ticketPartSalarialePct}%) — cumul annuel = somme des 12 mois</p>
           <p>Total mensuel = Salaire mensuel + Prime d'expérience</p>
         </div>
@@ -1348,9 +1402,10 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifie
   const chevauchements = joursPlage.filter(function(d) { return joursPris.some(function(j) { return j.date === d && (!editingJourId || j.id !== editingJourId); }); });
   const dureeUnitaire = Number(form.duree) || 0;
   const dureeTotale = round2(joursPlage.length * dureeUnitaire);
-  const soldeActuelType = form.type === "RTT" ? conges.soldeRTT : conges.soldeCP;
-  const soldeApres = round2(soldeActuelType - dureeTotale + (editingJourId ? Number(form.duree) : 0));
-  const soldeNegatif = soldeApres < 0;
+  const soldeConcerne = form.type === "RTT" || form.type === "CP";
+  const soldeActuelType = form.type === "RTT" ? conges.soldeRTT : (form.type === "CP" ? conges.soldeCP : null);
+  const soldeApres = soldeConcerne ? round2(soldeActuelType - dureeTotale + (editingJourId ? Number(form.duree) : 0)) : null;
+  const soldeNegatif = soldeConcerne && soldeApres < 0;
   const blocageSubmit = !editingJourId && (soldeNegatif || chevauchements.length > 0);
 
   function commencerEditionJour(j) {
@@ -1566,7 +1621,7 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifie
           <button type="button" onClick={() => setForm({ ...form, type: "Formation" })} className="py-2 rounded-lg text-sm"
             style={{ backgroundColor: form.type === "Formation" ? COLORS.ink : COLORS.stripe, color: form.type === "Formation" ? "#fff" : COLORS.ink }}>🎓 Formation</button>
         </div>
-        <p className="text-xs text-stone-400 mb-3">Pont offert : sans impact sur le solde RTT/CP ni sur les TR. Formation : sans impact sur le solde RTT/CP, mais déduit du nombre de TR.</p>
+        <p className="text-xs text-stone-400 mb-3">Pont offert 🌉 et Formation 🎓 : offerts par l'employeur, sans quota ni impact sur le solde RTT/CP, mais déduits du décompte TR du mois suivant (jour non travaillé). Week-ends et jours fériés exclus automatiquement des TR.</p>
 
         {!editingJourId && (
           <>
@@ -1639,7 +1694,7 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifie
           {joursPlage.length > 0 && (
             <div className="col-span-2 rounded-lg p-3 text-xs" style={{ backgroundColor: COLORS.stripe }}>
               <p>{joursPlage.length} jour(s) × {form.duree === "0.5" ? "1/2" : "1"} = <span className="font-mono font-semibold">{formatJours(dureeTotale)} j</span> déduit(s)</p>
-              <p className="mt-1">Nouveau solde {form.type} : <span className="font-mono font-semibold" style={{ color: soldeNegatif ? COLORS.loss : COLORS.gain }}>{formatJours(soldeApres)} j</span></p>
+              {soldeConcerne && <p className="mt-1">Nouveau solde {form.type} : <span className="font-mono font-semibold" style={{ color: soldeNegatif ? COLORS.loss : COLORS.gain }}>{formatJours(soldeApres)} j</span></p>}
               <p className="mt-1 text-stone-500">Impact TR estimé : −{joursPlage.length} jour(s) travaillé(s) sur le(s) mois concerné(s)</p>
             </div>
           )}
