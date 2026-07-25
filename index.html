@@ -94,7 +94,7 @@ const DEFAULT_STATE = {
     ticketNombreMois: 18, ticketValeur: 12.20, ticketPartSalarialePct: 40,
     valorisationConventionDate: "2025-08-01",
     baseConventionnelleClasse3: 2089.17, croissanceBaseMoyenne: 1.74, valorisationTauxDepart: 9, valorisationIncrementAnnuel: 1.5, valorisationPlafond: 15,
-    ratioBrutSurBase: 1.489, ratioNetSurBrut: 0.723, ratioNetFiscalSurBrut: 0.8,
+    ratioBrutSurBase: 1.386, ratioNetSurBrut: 0.723, ratioNetFiscalSurBrut: 0.858,
     mutuelleConjointMensuel: 48.08,
     tauxPAS: 2.2,
     abonnementTransportMensuel: 56, remboursementTransportPct: 50,
@@ -283,19 +283,40 @@ function estimerAnnee(personne, annee, joursPris, config, suiviConges) {
   const dateValorisation = config.valorisationConventionDate || "2025-08-01";
   const moisDetail = [];
   let totalSalaire = 0, totalPrime = 0, totalTR = 0, totalTickets = 0, totalRTT = 0, totalCP = 0, totalBrut = 0, totalNet = 0, totalNetFiscal = 0, totalPAS = 0, totalTransport = 0, totalInteressement = 0;
-  let baseCourante = dernierConnu;
+  // Mois sans bulletin réel = moyenne ROBUSTE des mois réels connus jusqu'ici (pas la dernière
+  // valeur seule) : un mois qui s'écarte de plus de 15% de la médiane (ex. une prime exceptionnelle
+  // comme en mai) est exclu du calcul pour ne pas fausser l'estimation des mois suivants.
+  const salairesReelsOrdonnes = connues.map(function(k) { return { key: k, val: Number(src[k].salaire) }; });
+  function moyenneRobuste(valeurs) {
+    if (!valeurs.length) return null;
+    const tries = valeurs.slice().sort(function(a,b){ return a-b; });
+    const mid = Math.floor(tries.length/2);
+    const mediane = tries.length % 2 ? tries[mid] : (tries[mid-1]+tries[mid])/2;
+    const filtrees = mediane ? valeurs.filter(function(v){ return Math.abs(v-mediane)/mediane <= 0.15; }) : valeurs;
+    const base = filtrees.length ? filtrees : valeurs;
+    return base.reduce(function(s,v){ return s+v; }, 0) / base.length;
+  }
+  let baseCourante = (function() {
+    const avant = salairesReelsOrdonnes.filter(function(x){ return x.key < annee + "-01"; }).map(function(x){ return x.val; });
+    const moy = moyenneRobuste(avant);
+    return moy != null ? round2(moy) : dernierConnu;
+  })();
 
   for (let m = 1; m <= 12; m++) {
     const key = annee + "-" + String(m).padStart(2, "0");
     const reel = src[key];
     // Augmentation générale manuelle en % (Nicolas uniquement, saisie sur la ligne de janvier) :
-    // majore le salaire de base retenu pour les mois estimés, dès janvier et pour le reste de l'année.
+    // majore la base retenue pour les mois estimés, dès janvier et pour le reste de l'année.
     const augmentationPct = (reel && reel.augmentationPct !== undefined && reel.augmentationPct !== "" && reel.augmentationPct !== null) ? Number(reel.augmentationPct) : 0;
     if (m === 1 && augmentationPct && baseCourante != null) baseCourante = round2(baseCourante * (1 + augmentationPct / 100));
     const estimeSalaire = !(reel && reel.salaire);
     const apresValorisation = key >= dateValorisation.slice(0,7);
     let salaireBase = estimeSalaire ? baseCourante : Number(reel.salaire);
-    if (!estimeSalaire) baseCourante = salaireBase;
+    if (!estimeSalaire) {
+      const jusquIci = salairesReelsOrdonnes.filter(function(x){ return x.key <= key; }).map(function(x){ return x.val; });
+      const moy = moyenneRobuste(jusquIci);
+      baseCourante = moy != null ? round2(moy) : baseCourante;
+    }
     const valorisationAppliquee = false;
     const primeExpInfo = primeExperienceMensuelle(annee, m, config);
     const tauxValoAnnee = primeExpInfo.taux;
@@ -368,6 +389,7 @@ function estimerAnnee(personne, annee, joursPris, config, suiviConges) {
     totalInteressement: round2(totalInteressement),
     totalGeneral: round2(totalSalaire + totalPrime + totalTransport + totalInteressement),
     dernierConnu: dernierConnu,
+    moyenneSalaireReel: baseCourante,
     nbMoisEstimes: moisDetail.filter(function(m){return m.estimeSalaire;}).length,
     parametres: {
       tauxPrimeExperience: primeExpInfoAnnuel.taux,
@@ -389,7 +411,7 @@ function archiverAnnee(estimation) {
   texte += "Générée le " + formatDateFR(toLocalISODate(new Date())) + "\n";
   texte += "========================================================\n\n";
   texte += "HYPOTHESES ET PARAMETRES\n";
-  texte += "- Salaire de base pour les mois non renseignés : dernière valeur connue (" + formatEUR(estimation.dernierConnu||0) + ")\n";
+  texte += "- Salaire de base pour les mois non renseignés : moyenne des mois réels connus (" + formatEUR(estimation.moyenneSalaireReel||0) + ")\n";
   texte += "- Prime d'expérience : base " + formatEUR(estimation.parametres.baseConventionnelleClasse3) + " × taux " + estimation.parametres.tauxPrimeExperience + " % (= taux de revalorisation " + estimation.annee + ")\n";
   texte += "- Base conventionnelle Classe 3 : " + formatEUR(estimation.parametres.baseConventionnelleClasse3) + ", revalorisée à " + estimation.parametres.valorisationTauxAnnee + " % pour " + estimation.annee + " (mois estimés à partir de " + formatDateFR(estimation.parametres.valorisationConventionDate) + ")\n";
   texte += "- Titre-restaurant : 1 par jour ouvré réellement travaillé (jours ouvrés du mois - RTT/CP/Formation/Pont offert posés le mois précédent), valeur " + formatEUR(estimation.parametres.ticketValeur) + ", part salariale " + estimation.parametres.ticketPartSalarialePct + " %\n\n";
@@ -1249,18 +1271,17 @@ function EstimationTab({ nicolas, joursPris, config, updateConfig, archives, ajo
 
       <Card>
         <p className="text-sm font-medium mb-3">Tableau récapitulatif</p>
-        <div className="grid gap-1 text-xs text-stone-500 mb-1 px-1" style={{gridTemplateColumns:"repeat(5,1fr)"}}>
-          <span>Mois</span><span>Salaire</span><span>Prime exp.</span><span>TR</span><span>Intéress.</span>
+        <div className="grid grid-cols-4 gap-1 text-xs text-stone-500 mb-1 px-1">
+          <span>Mois</span><span>Salaire</span><span>Prime exp.</span><span>TR</span>
         </div>
         <div className="space-y-1">
           {estimation.moisDetail.map(function(m, i) {
             return (
-              <div key={m.mois} className="grid gap-1 items-center rounded-lg px-1 py-1.5" style={{ backgroundColor: i % 2 === 1 ? COLORS.stripe : "transparent", gridTemplateColumns:"repeat(5,1fr)" }}>
+              <div key={m.mois} className="grid grid-cols-4 gap-1 items-center rounded-lg px-1 py-1.5" style={{ backgroundColor: i % 2 === 1 ? COLORS.stripe : "transparent" }}>
                 <span className="text-xs font-mono capitalize">{MOIS_FR[m.mois-1].slice(0,3)}{m.estimeSalaire ? "*" : ""}</span>
                 <span className="font-mono text-xs">{formatEUR(m.salaireBase)}</span>
                 <span className="font-mono text-xs">{formatEUR(m.primeExperience)}</span>
                 <span className="font-mono text-xs">TR {m.ticketsEstimes}j</span>
-                <span className="font-mono text-xs" style={{color: m.interessement ? COLORS.gold : "#a8a29e"}}>{m.interessement ? formatEUR(m.interessement) : "—"}</span>
               </div>
             );
           })}
@@ -1296,7 +1317,7 @@ function EstimationTab({ nicolas, joursPris, config, updateConfig, archives, ajo
       <Card>
         <p className="text-sm font-medium mb-2">Hypothèses retenues</p>
         <ul className="text-xs text-stone-500 space-y-1.5 list-none">
-          <li>• Pour les mois sans salaire renseigné, dernière valeur connue utilisée : {estimation.dernierConnu != null ? formatEUR(estimation.dernierConnu) : "aucune donnée disponible"}.</li>
+          <li>• Pour les mois sans salaire renseigné, moyenne robuste des mois réels connus utilisée (recalculée à chaque nouveau bulletin saisi ; un mois qui s'écarte de plus de 15% de la médiane, ex. une prime exceptionnelle, est exclu du calcul) : {estimation.moyenneSalaireReel != null ? formatEUR(estimation.moyenneSalaireReel) : "aucune donnée disponible"}.</li>
           <li>• Les mois estimés à partir de {formatDateFR(config.valorisationConventionDate)} appliquent le taux de revalorisation de l'année en cours au salaire de référence utilisé.</li>
           <li>• Les titres-restaurant supposent 1 titre par jour ouvré réellement travaillé, sur la base des RTT/CP/Formation/Pont offert posés le mois précédent (comme sur le bulletin réel).</li>
           <li>• Les jours ouvrés excluent samedis, dimanches et jours fériés (calendrier France métropolitaine, recalculé chaque année).</li>
@@ -1308,7 +1329,7 @@ function EstimationTab({ nicolas, joursPris, config, updateConfig, archives, ajo
       <Card>
         <p className="text-sm font-medium mb-3">Formules utilisées</p>
         <div className="text-xs text-stone-500 space-y-1.5 font-mono">
-          <p>Salaire mensuel = donnée réelle du bulletin, ou dernière valeur connue (majorée de l'augmentation générale % saisie en janvier, Nicolas uniquement)</p>
+          <p>Salaire mensuel = donnée réelle du bulletin, ou moyenne des mois réels connus (majorée de l'augmentation générale % saisie en janvier, Nicolas uniquement)</p>
           <p>Prime d'expérience = Base conventionnelle Classe 3 ({formatEUR(config.baseConventionnelleClasse3)}) × Taux de revalorisation de l'année</p>
           <p>Brut estimé = Salaire mensuel × {config.ratioBrutSurBase} (ratio observé sur bulletins réels)</p>
           <p>Net estimé = Brut estimé × {config.ratioNetSurBrut} (ratio observé sur bulletins réels) − Mutuelle conjoint + Intéressement (juillet)</p>
