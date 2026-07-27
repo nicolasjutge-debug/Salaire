@@ -1058,12 +1058,12 @@ function SalairesTab({ personnes, updatePersonnes, config, updateConfig, joursPr
         {personneId === "nicolas" && (
           <div className="text-xs text-stone-400 mb-2 space-y-1">
             <p>Champs vides = valeur estimée automatiquement (filigrane). Saisis le bulletin réel pour la remplacer.</p>
-            <p>🎁 Intéressement (juillet uniquement) et 📈 Augmentation générale (janvier uniquement) se saisissent sous la ligne du mois concerné, ci-dessous.</p>
+            <p>🎁 Intéressement (juillet, Nicolas uniquement) et 📈 Augmentation générale (janvier) se saisissent en fin de tableau, après décembre.</p>
             <p>⚠️ Si le salaire a changé depuis 07/2026, saisis directement la nouvelle valeur dans la colonne <b>Salaire</b> du mois concerné.</p>
           </div>
         )}
-        <div className="grid grid-cols-5 gap-1 text-xs text-stone-500 mb-1 px-1">
-          <span>Mois</span><span>💰 Salaire</span><span>💶 Net payé</span><span>🧾 N.fiscal</span><span>📉 PAS</span>
+        <div className="grid grid-cols-4 gap-1 text-xs text-stone-500 mb-1 px-1">
+          <span>Mois</span><span>💶 Net payé</span><span>🧾 N.fiscal</span><span>📉 PAS</span>
         </div>
         <div className="space-y-1">
           {MOIS_FR.map(function(m, i) {
@@ -1073,12 +1073,8 @@ function SalairesTab({ personnes, updatePersonnes, config, updateConfig, joursPr
             const estMois = estimationNicolas ? estimationNicolas.moisDetail[i] : null;
             return (
               <div key={mois} className="rounded-lg px-1 py-1" style={{ backgroundColor: i % 2 === 1 ? COLORS.stripe : "transparent" }}>
-                <div className="grid grid-cols-5 gap-1 items-center">
+                <div className="grid grid-cols-4 gap-1 items-center">
                   <span className="text-xs font-mono capitalize">{m.slice(0,3)}</span>
-                  <input type="number" step="0.01" value={e.salaire === undefined ? "" : e.salaire}
-                    placeholder={estMois ? formatJours(estMois.salaireBase) : "—"}
-                    onChange={ev => updateMois(mois, "salaire", ev.target.value === "" ? "" : Number(ev.target.value))}
-                    className="font-mono w-full border border-stone-300 rounded px-1 py-1 text-xs" />
                   <input type="number" step="0.01" value={e.netPaye === undefined ? "" : e.netPaye}
                     placeholder={estMois ? formatJours(estMois.netEstime) : "—"}
                     onChange={ev => updateMois(mois, "netPaye", ev.target.value === "" ? "" : Number(ev.target.value))}
@@ -1092,40 +1088,44 @@ function SalairesTab({ personnes, updatePersonnes, config, updateConfig, joursPr
                     onChange={ev => updateMois(mois, "ps", ev.target.value === "" ? "" : Number(ev.target.value))}
                     className="font-mono w-full border border-stone-300 rounded px-1 py-1 text-xs" />
                 </div>
-                {mois === 1 && personneId === "nicolas" && (
-                  <div className="mt-1 mx-1 px-2 py-1.5 rounded-lg flex items-center gap-2" style={{ backgroundColor: "#EAF0F5", border: "1px solid " + COLORS.accent }}>
-                    <span className="text-xs flex-1" style={{ color: COLORS.accent }}>📈 Augmentation générale (janvier)</span>
-                    <input type="number" step="0.1" value={e.augmentationPct === undefined ? "" : e.augmentationPct}
-                      placeholder="—"
-                      title="Augmentation générale en %, appliquée au salaire de base à partir de janvier et propagée aux mois suivants estimés."
-                      onChange={ev => updateMois(mois, "augmentationPct", ev.target.value === "" ? "" : Number(ev.target.value))}
-                      className="font-mono border rounded px-1 py-1 text-xs text-right" style={{ width: "4rem", borderColor: COLORS.accent, backgroundColor: "#fff" }} />
-                    <span className="text-xs" style={{ color: COLORS.accent }}>%</span>
-                  </div>
-                )}
-                {mois === 7 && (
-                  <div className="mt-1 mx-1 px-2 py-1.5 rounded-lg" style={{ backgroundColor: "#FBF6EC", border: "1px solid " + COLORS.gold }}>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs flex-1" style={{ color: COLORS.gold }}>🎁 Intéressement (juillet, 1×/an)</span>
-                      <input type="number" step="0.01" value={e.interessement === undefined ? "" : e.interessement}
-                        placeholder="—"
-                        title="Intéressement/participation versé en juillet — ajouté au net fiscal, au net payé et au total du mois."
-                        onChange={ev => updateMois(mois, "interessement", ev.target.value === "" ? "" : Number(ev.target.value))}
-                        className="font-mono border rounded px-1 py-1 text-xs text-right" style={{ width: "5rem", borderColor: COLORS.gold, backgroundColor: "#fff" }} />
-                      <span className="text-xs" style={{ color: COLORS.gold }}>€</span>
-                    </div>
-                    {Number(e.interessement) > 0 && estMois && (
-                      <p className="text-xs mt-1" style={{ color: COLORS.gold }}>→ avec intéressement : Net fiscal {formatEUR(estMois.netFiscalEstime)} · Net payé {formatEUR(estMois.netEstime)} · PAS {formatEUR(estMois.pasEstime)}</p>
-                    )}
-                  </div>
+                {mois === 1 && personneId === "nicolas" && Number(e.augmentationPct) > 0 && (
+                  <p className="text-xs mt-1 mx-1" style={{ color: COLORS.accent }}>📈 Augmentation générale : +{e.augmentationPct}%</p>
                 )}
               </div>
             );
           })}
         </div>
-        <div className="grid grid-cols-5 gap-1 items-center mt-2 pt-2 border-t border-stone-200 px-1">
+        {personneId === "nicolas" && (
+          <div className="mt-2 pt-2 border-t border-stone-200 px-1 space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs flex-1">📈 Augmentation générale (janvier)</span>
+              <input type="number" step="0.1" value={(personne.entreesMensuelles[annee+"-01"]||{}).augmentationPct === undefined ? "" : (personne.entreesMensuelles[annee+"-01"]||{}).augmentationPct}
+                placeholder="—"
+                title="Augmentation générale en %, appliquée au salaire de base à partir de janvier et propagée aux mois suivants estimés."
+                onChange={ev => updateMois(1, "augmentationPct", ev.target.value === "" ? "" : Number(ev.target.value))}
+                className="font-mono w-full border border-stone-300 rounded px-1 py-1 text-xs text-right" style={{ maxWidth: "4rem" }} />
+              <span className="text-xs text-stone-500">%</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs flex-1">🎁 Intéressement (juillet, 1×/an)</span>
+              <input type="number" step="0.01" value={(personne.entreesMensuelles[annee+"-07"]||{}).interessement === undefined ? "" : (personne.entreesMensuelles[annee+"-07"]||{}).interessement}
+                placeholder="—"
+                title="Intéressement/participation versé en juillet — ajouté au net fiscal, au net payé et au total du mois."
+                onChange={ev => updateMois(7, "interessement", ev.target.value === "" ? "" : Number(ev.target.value))}
+                className="font-mono w-full border border-stone-300 rounded px-1 py-1 text-xs text-right" style={{ maxWidth: "5rem" }} />
+              <span className="text-xs text-stone-500">€</span>
+            </div>
+            {estimationNicolas && (
+              <p className="text-xs" style={{ color: COLORS.gold }}>
+                {Number((personne.entreesMensuelles[annee+"-07"]||{}).interessement) > 0
+                  ? "🎁 Intégré en juillet : Net fiscal " + formatEUR(estimationNicolas.moisDetail[6].netFiscalEstime) + " · Net payé " + formatEUR(estimationNicolas.moisDetail[6].netEstime) + " — déjà inclus dans le Total ci-dessous."
+                  : "Aucune valeur saisie → 0 €, aucun impact sur le Total."}
+              </p>
+            )}
+          </div>
+        )}
+        <div className="grid grid-cols-4 gap-1 items-center mt-2 pt-2 border-t border-stone-200 px-1">
           <span className="text-xs font-semibold">Total</span>
-          <span className="font-mono text-xs font-semibold">{formatEUR(totaux.salaire)}</span>
           <span className="font-mono text-xs font-semibold" style={{ color: COLORS.accent }}>{formatEUR(totaux.netPaye)}</span>
           <span className="font-mono text-xs font-semibold">{formatEUR(totaux.netFiscal)}</span>
           <span className="font-mono text-xs font-semibold">{formatEUR(totaux.ps)}</span>
@@ -1324,15 +1324,14 @@ function EstimationTab({ nicolas, joursPris, config, updateConfig, archives, ajo
 
       <Card>
         <p className="text-sm font-medium mb-3">Tableau récapitulatif</p>
-        <div className="grid grid-cols-5 gap-1 text-xs text-stone-500 mb-1 px-1">
-          <span>Mois</span><span>Salaire</span><span>Prime exp.</span><span>TR</span><span>💶 Net payé</span>
+        <div className="grid grid-cols-4 gap-1 text-xs text-stone-500 mb-1 px-1">
+          <span>Mois</span><span>Prime exp.</span><span>TR</span><span>💶 Net payé</span>
         </div>
         <div className="space-y-1">
           {estimation.moisDetail.map(function(m, i) {
             return (
-              <div key={m.mois} className="grid grid-cols-5 gap-1 items-center rounded-lg px-1 py-1.5" style={{ backgroundColor: i % 2 === 1 ? COLORS.stripe : "transparent" }}>
+              <div key={m.mois} className="grid grid-cols-4 gap-1 items-center rounded-lg px-1 py-1.5" style={{ backgroundColor: i % 2 === 1 ? COLORS.stripe : "transparent" }}>
                 <span className="text-xs font-mono capitalize">{MOIS_FR[m.mois-1].slice(0,3)}{m.estimeSalaire ? "*" : ""}</span>
-                <span className="font-mono text-xs">{formatEUR(m.salaireBase)}</span>
                 <span className="font-mono text-xs">{formatEUR(m.primeExperience)}</span>
                 <span className="font-mono text-xs">TR {m.ticketsEstimes}j</span>
                 <span className="font-mono text-xs font-semibold" style={{ color: COLORS.accent }}>{formatEUR(m.netEstime)}</span>
