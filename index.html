@@ -14,6 +14,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.0/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   /* Feuille utilitaire autonome (remplace Tailwind CDN, non chargeable dans l'aperçu Claude) */
   * { box-sizing: border-box; }
@@ -304,6 +305,20 @@ function estimerAnnee(personne, annee, joursPris, config, suiviConges) {
     return moy != null ? round2(moy) : dernierConnu;
   })();
 
+  // Net payé, net fiscal et taux de PAS de référence : moyenne robuste de TOUS les bulletins réels
+  // connus (comme le salaire ci-dessus). Un nouveau bulletin réel saisi (n'importe quel mois)
+  // affine donc automatiquement l'estimation de tous les mois restants sans bulletin réel —
+  // repli sur la valeur de config si aucun bulletin réel n'est encore connu.
+  const netPayeReelsConnus = Object.keys(src).filter(function(k){ return src[k] && src[k].netPaye; }).map(function(k){ return Number(src[k].netPaye); });
+  const netFiscalReelsConnus = Object.keys(src).filter(function(k){ return src[k] && src[k].netFiscal; }).map(function(k){ return Number(src[k].netFiscal); });
+  const pasRatiosReelsConnus = Object.keys(src).filter(function(k){ return src[k] && src[k].netFiscal && src[k].ps; }).map(function(k){ return Number(src[k].ps) / Number(src[k].netFiscal) * 100; });
+  const moyNetPaye = moyenneRobuste(netPayeReelsConnus);
+  const moyNetFiscal = moyenneRobuste(netFiscalReelsConnus);
+  const moyTauxPAS = moyenneRobuste(pasRatiosReelsConnus);
+  const referenceNetPayeDynamique = moyNetPaye != null ? round2(moyNetPaye) : Number(config.referenceNetPaye || 0);
+  const referenceNetFiscalDynamique = moyNetFiscal != null ? round2(moyNetFiscal) : Number(config.referenceNetFiscal || 0);
+  const tauxPASDynamique = moyTauxPAS != null ? moyTauxPAS : Number(config.tauxPAS || 0);
+
   for (let m = 1; m <= 12; m++) {
     const key = annee + "-" + String(m).padStart(2, "0");
     const reel = src[key];
@@ -362,12 +377,12 @@ function estimerAnnee(personne, annee, joursPris, config, suiviConges) {
     // mois par rapport au TR de référence (seule variable qui bouge d'un mois normal à l'autre).
     const ecartTR = joursTravailles - Number(config.referenceTR||0);
     const ajustementTR = round2(ecartTR * (Number(config.ticketValeur)||0) * (Number(config.ticketPartSalarialePct)||0) / 100);
-    const netFiscalBase = (reel && reel.netFiscal) ? Number(reel.netFiscal) : Number(config.referenceNetFiscal||0);
+    const netFiscalBase = (reel && reel.netFiscal) ? Number(reel.netFiscal) : referenceNetFiscalDynamique;
     const netFiscalEstime = round2(netFiscalBase + interessementNetFiscal);
-    const pasRatio = round2(netFiscalEstime * Number(config.tauxPAS||0) / 100);
+    const pasRatio = round2(netFiscalEstime * tauxPASDynamique / 100);
     const pasEstime = (reel && reel.ps) ? Number(reel.ps) : pasRatio;
     const mutuelleConjoint = Number(config.mutuelleConjointMensuel) || 0;
-    const netEstimeRatioBase = round2(Number(config.referenceNetPaye||0) - ajustementTR);
+    const netEstimeRatioBase = round2(referenceNetPayeDynamique - ajustementTR);
     const netPayeReel = (reel && reel.netPaye) ? Number(reel.netPaye) : null;
     const netEstime = round2((netPayeReel != null ? netPayeReel : netEstimeRatioBase) + interessementNetPaye);
     const netFiscalDepuisReel = !!(reel && reel.netFiscal);
@@ -401,6 +416,7 @@ function estimerAnnee(personne, annee, joursPris, config, suiviConges) {
     totalNetFiscal: round2(totalNetFiscal), totalPAS: round2(totalPAS), totalTransport: round2(totalTransport),
     totalInteressement: round2(totalInteressement),
     totalGeneral: round2(totalSalaire + totalPrime + totalTransport + totalInteressement),
+    referenceNetPayeDynamique: referenceNetPayeDynamique, referenceNetFiscalDynamique: referenceNetFiscalDynamique, tauxPASDynamique: round2(tauxPASDynamique), nbBulletinsReels: connues.length,
     dernierConnu: dernierConnu,
     moyenneSalaireReel: baseCourante,
     nbMoisEstimes: moisDetail.filter(function(m){return m.estimeSalaire;}).length,
@@ -525,6 +541,16 @@ function exporterICS(joursPris) {
   a.href = url; a.download = "rtt-cp.ics";
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+function exporterExcelRTTCP(joursPris) {
+  const lignes = [...joursPris].sort(function(a,b){ return a.date.localeCompare(b.date); }).map(function(j) {
+    return { Date: j.date, Type: j.type, "Durée (jours)": Number(j.duree), Note: j.note || "" };
+  });
+  const feuille = XLSX.utils.json_to_sheet(lignes);
+  feuille["!cols"] = [{ wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 32 }];
+  const classeur = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(classeur, feuille, "RTT-CP");
+  XLSX.writeFile(classeur, "rtt-cp-" + toLocalISODate(new Date()) + ".xlsx");
 }
 function exporterJSON(state) {
   const texte = JSON.stringify(state, null, 2);
@@ -732,8 +758,15 @@ function SyncPanel({ binConfig, onConnect, onDisconnect, onImport, currentState,
           <button onClick={() => { onDisconnect(); onClose(); }} className="text-xs" style={{ color: COLORS.loss }}>Déconnecter</button>
           <button onClick={onClose} className="text-xs" style={{ color: COLORS.accent }}>Fermer</button>
         </div>
-        <div className="border-t mt-3 pt-3" style={{ borderColor: COLORS.stripe }}>
+        <div className="border-t mt-3 pt-3 space-y-2" style={{ borderColor: COLORS.stripe }}>
           <button onClick={() => exporterJSON(currentState)} className="w-full py-2 rounded-lg text-xs" style={{ backgroundColor: COLORS.stripe, color: COLORS.ink }}>📥 Télécharger une sauvegarde JSON (local)</button>
+          <input type="file" accept=".json,application/json" id="import-json-local-1" className="hidden" onChange={ev => {
+            const file = ev.target.files[0]; if (!file) return;
+            const reader = new FileReader();
+            reader.onload = e => { try { onImport(JSON.parse(e.target.result)); } catch (err) { alert("Fichier JSON invalide."); } };
+            reader.readAsText(file); ev.target.value = "";
+          }} />
+          <label htmlFor="import-json-local-1" className="w-full py-2 rounded-lg text-xs block text-center cursor-pointer border" style={{ borderColor: COLORS.stripe, color: COLORS.ink }}>📤 Importer une sauvegarde JSON (local)</label>
         </div>
       </Card>
     );
@@ -771,8 +804,15 @@ function SyncPanel({ binConfig, onConnect, onDisconnect, onImport, currentState,
         </div>
       </form>
       <p className="text-xs text-stone-400 mt-3">Pas de compte ? Crée-en un gratuitement sur jsonbin.io, copie ta X-Master-Key depuis ton tableau de bord.</p>
-      <div className="border-t mt-3 pt-3" style={{ borderColor: COLORS.stripe }}>
+      <div className="border-t mt-3 pt-3 space-y-2" style={{ borderColor: COLORS.stripe }}>
         <button onClick={() => exporterJSON(currentState)} className="w-full py-2 rounded-lg text-xs" style={{ backgroundColor: COLORS.stripe, color: COLORS.ink }}>📥 Télécharger une sauvegarde JSON (local)</button>
+        <input type="file" accept=".json,application/json" id="import-json-local-2" className="hidden" onChange={ev => {
+          const file = ev.target.files[0]; if (!file) return;
+          const reader = new FileReader();
+          reader.onload = e => { try { onImport(JSON.parse(e.target.result)); } catch (err) { alert("Fichier JSON invalide."); } };
+          reader.readAsText(file); ev.target.value = "";
+        }} />
+        <label htmlFor="import-json-local-2" className="w-full py-2 rounded-lg text-xs block text-center cursor-pointer border" style={{ borderColor: COLORS.stripe, color: COLORS.ink }}>📤 Importer une sauvegarde JSON (local)</label>
       </div>
     </Card>
   );
@@ -1282,6 +1322,7 @@ function EstimationTab({ nicolas, joursPris, config, updateConfig, archives, ajo
   const [annee, setAnnee] = useState(anneeActuelle);
   const [detailOuvert, setDetailOuvert] = useState(false);
   const [erreurCalcul, setErreurCalcul] = useState(null);
+  const [archiveOuverte, setArchiveOuverte] = useState(null);
 
   let estimation = null;
   try {
@@ -1417,7 +1458,7 @@ function EstimationTab({ nicolas, joursPris, config, updateConfig, archives, ajo
 
       <Card>
         <p className="text-sm font-medium mb-1">Salaire de référence (janvier)</p>
-        <p className="text-xs text-stone-400 mb-3">Bulletin de janvier au complet — base pour tous les mois sans bulletin réel. Le net payé varie ensuite selon l'écart de TR par rapport à la référence. Mai et novembre suivent la même règle, leur prime (vacances/Noël) s'ajoute en plus.</p>
+        <p className="text-xs text-stone-400 mb-3">Point de départ (janvier). Net payé, net fiscal et taux de PAS se recalculent ensuite automatiquement en moyenne de TOUS les bulletins réels connus dès qu'un nouveau bulletin est saisi (n'importe quel mois) — ces champs ne servent que tant qu'aucun bulletin réel n'existe encore. Le net payé varie en plus selon l'écart de TR par rapport au TR de référence. Mai et novembre suivent la même règle, leur prime (vacances/Noël) s'ajoute en plus.</p>
         <div className="grid grid-cols-2 gap-3">
           <NumberField label="Salaire réf." value={config.referenceSalaire} onChange={v => updateConfig({ referenceSalaire: v })} suffix="€" />
           <NumberField label="Net payé réf." value={config.referenceNetPaye} onChange={v => updateConfig({ referenceNetPaye: v })} suffix="€" />
@@ -1432,8 +1473,8 @@ function EstimationTab({ nicolas, joursPris, config, updateConfig, archives, ajo
           <p>Salaire mensuel = donnée réelle du bulletin, ou moyenne des mois réels connus (majorée de l'augmentation générale % saisie en janvier, Nicolas uniquement)</p>
           <p>Prime d'expérience = Base conventionnelle Classe 3 ({formatEUR(config.baseConventionnelleClasse3)}) × Taux de revalorisation de l'année</p>
           <p>Brut estimé = Salaire mensuel + Prime d'expérience (exact)</p>
-          <p>Net estimé = Net payé de référence ({formatEUR(config.referenceNetPaye)}) − (TR du mois − TR de référence [{config.referenceTR}]) × Valeur TR × Part salariale + Intéressement net payé (juillet, valeur indépendante du salaire)</p>
-          <p>Net fiscal estimé = Net fiscal de référence ({formatEUR(config.referenceNetFiscal)}), ou net fiscal réel saisi si disponible, + Intéressement net fiscal (juillet, valeur indépendante du salaire) — PAS = Net fiscal × Taux PAS ({config.tauxPAS}%)</p>
+          <p>Net estimé = Net payé de référence dynamique ({formatEUR(estimation.referenceNetPayeDynamique)}, moyenne de {estimation.nbBulletinsReels} bulletin(s) réel(s) connu(s)) − (TR du mois − TR de référence [{config.referenceTR}]) × Valeur TR × Part salariale + Intéressement net payé (juillet, valeur indépendante du salaire)</p>
+          <p>Net fiscal estimé = Net fiscal de référence dynamique ({formatEUR(estimation.referenceNetFiscalDynamique)}), ou net fiscal réel saisi si disponible, + Intéressement net fiscal (juillet, valeur indépendante du salaire) — PAS = Net fiscal × Taux PAS dynamique ({estimation.tauxPASDynamique}%)</p>
           <p>Prime transport = Abonnement STAR/Keolis × Remboursement ({config.remboursementTransportPct}%)</p>
           <p>Jours travaillés (= nb TR) = Jours ouvrés du mois (hors week-ends et jours fériés) − RTT/CP/Formation/Pont offert posés le mois précédent (sauf TR manuel saisi)</p>
           <p>Valeur TR = Nb TR × Valeur unitaire × Part salariale ({config.ticketPartSalarialePct}%) — cumul annuel = somme des 12 mois</p>
@@ -1493,17 +1534,39 @@ function EstimationTab({ nicolas, joursPris, config, updateConfig, archives, ajo
         <div className="space-y-1 mb-3">
           {archives.length === 0 && <p className="text-sm text-stone-400">Aucune année archivée.</p>}
           {archives.map(function(a, i) {
+            const ouvert = archiveOuverte === a.annee;
             return (
-              <Row key={a.annee} index={i}>
-                <div>
-                  <p className="font-mono">{a.annee} — Total {formatEUR(a.estimation.totalGeneral)}</p>
-                  <p className="text-xs text-stone-400">Archivée le {formatDateFR(a.dateArchivage)} · prime d'expérience à {a.estimation.parametres.tauxPrimeExperience}% (base {formatEUR(a.estimation.parametres.baseConventionnelleClasse3)})</p>
+              <div key={a.annee} className="rounded-lg overflow-hidden" style={{ backgroundColor: i % 2 === 1 ? COLORS.stripe : "transparent" }}>
+                <div className="flex items-center justify-between px-2 py-1.5 cursor-pointer" onClick={() => setArchiveOuverte(ouvert ? null : a.annee)}>
+                  <div>
+                    <p className="font-mono">{a.annee} — Total {formatEUR(a.estimation.totalGeneral)}</p>
+                    <p className="text-xs text-stone-400">Archivée le {formatDateFR(a.dateArchivage)} · prime d'expérience à {a.estimation.parametres.tauxPrimeExperience}% (base {formatEUR(a.estimation.parametres.baseConventionnelleClasse3)})</p>
+                  </div>
+                  <div className="flex items-center gap-2" onClick={ev => ev.stopPropagation()}>
+                    <button onClick={() => archiverAnnee(a.estimation)}><DownloadIcon size={15} color={COLORS.accent} /></button>
+                    <button onClick={() => supprimerArchive(a.annee)}><TrashIcon color={COLORS.loss} /></button>
+                    <span className="text-xs text-stone-400">{ouvert ? "▲" : "▼"}</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button onClick={() => archiverAnnee(a.estimation)}><DownloadIcon size={15} color={COLORS.accent} /></button>
-                  <button onClick={() => supprimerArchive(a.annee)}><TrashIcon color={COLORS.loss} /></button>
-                </div>
-              </Row>
+                {ouvert && (
+                  <div className="px-2 pb-2">
+                    <div className="grid grid-cols-4 gap-1 text-xs text-stone-500 mb-1 px-1">
+                      <span>Mois</span><span>Salaire</span><span>Prime exp.</span><span>Net payé</span>
+                    </div>
+                    {a.estimation.moisDetail.map(function(m) {
+                      return (
+                        <div key={m.mois} className="grid grid-cols-4 gap-1 items-center px-1 py-0.5">
+                          <span className="text-xs font-mono capitalize">{MOIS_FR[m.mois-1].slice(0,3)}{m.estimeSalaire ? "*" : ""}</span>
+                          <span className="font-mono text-xs">{formatEUR(m.salaireBase)}</span>
+                          <span className="font-mono text-xs">{formatEUR(m.primeExperience)}</span>
+                          <span className="font-mono text-xs font-semibold" style={{ color: COLORS.accent }}>{formatEUR(m.netEstime)}</span>
+                        </div>
+                      );
+                    })}
+                    <p className="text-xs text-stone-400 mt-1 px-1">TR total {a.estimation.moisDetail.reduce(function(s,m){return s+Number(m.joursTravailles||0);},0)}j · Net fiscal total {formatEUR(a.estimation.totalNetFiscal)} · Net total {formatEUR(a.estimation.totalNet)}</p>
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>
@@ -1787,9 +1850,14 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifie
       <Card>
         <div className="flex items-center justify-between mb-3">
           <p className="text-sm font-medium">{editingJourId ? "Modifier une entrée" : "Poser une absence"}</p>
-          <button onClick={() => exporterICS(joursPris)} disabled={joursPris.length === 0} className="text-xs flex items-center gap-1 rounded-full px-3 py-1.5 disabled:opacity-40" style={{ backgroundColor: COLORS.stripe }}>
-            <DownloadIcon size={13} /> Exporter (.ics)
-          </button>
+          <div className="flex gap-2">
+            <button onClick={() => exporterICS(joursPris)} disabled={joursPris.length === 0} className="text-xs flex items-center gap-1 rounded-full px-3 py-1.5 disabled:opacity-40" style={{ backgroundColor: COLORS.stripe }}>
+              <DownloadIcon size={13} /> .ics
+            </button>
+            <button onClick={() => exporterExcelRTTCP(joursPris)} disabled={joursPris.length === 0} className="text-xs flex items-center gap-1 rounded-full px-3 py-1.5 disabled:opacity-40 text-white" style={{ backgroundColor: COLORS.accent }}>
+              <DownloadIcon size={13} /> Excel
+            </button>
+          </div>
         </div>
 
         <p className="text-xs text-stone-500 mb-1">Type d'absence</p>
