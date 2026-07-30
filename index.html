@@ -105,7 +105,7 @@ const DEFAULT_STATE = {
     { id: "nicolas", nom: "Nicolas", dateEntree: "2019-07-01", interessementParAnnee: {}, entreesMensuelles: {
       "2025-07": { salaire: 2261.76, netFiscal: 2109.67, ps: 40.08, netPaye: 1779.56 },
       "2025-08": { salaire: 2261.76, netFiscal: 2101.80, ps: 39.93, netPaye: 1772.29 },
-      "2025-11": { salaire: 2261.76, netFiscal: 3976.30, ps: 75.55, netPaye: 3522.18 },
+      "2025-11": { salaire: 2261.76, netFiscal: 3976.30, ps: 75.55, netPaye: 3522.18, trManuel: 16 },
       "2026-01": { salaire: 2284.48, netFiscal: 2123.73, netPaye: 1800.98, trManuel: 13 },
       "2026-02": { salaire: 2284.48, netFiscal: 2123.73, ps: 46.72, netPaye: 1776.06 },
       "2026-05": { salaire: 2284.48, netFiscal: 3087.42, ps: 67.92, netPaye: 2677.83 },
@@ -309,9 +309,19 @@ function estimerAnnee(personne, annee, joursPris, config, suiviConges) {
   // connus (comme le salaire ci-dessus). Un nouveau bulletin réel saisi (n'importe quel mois)
   // affine donc automatiquement l'estimation de tous les mois restants sans bulletin réel —
   // repli sur la valeur de config si aucun bulletin réel n'est encore connu.
-  const netPayeReelsConnus = Object.keys(src).filter(function(k){ return src[k] && src[k].netPaye; }).map(function(k){ return Number(src[k].netPaye); });
-  const netFiscalReelsConnus = Object.keys(src).filter(function(k){ return src[k] && src[k].netFiscal; }).map(function(k){ return Number(src[k].netFiscal); });
-  const pasRatiosReelsConnus = Object.keys(src).filter(function(k){ return src[k] && src[k].netFiscal && src[k].ps; }).map(function(k){ return Number(src[k].ps) / Number(src[k].netFiscal) * 100; });
+  // Priorité aux bulletins réels DE L'ANNÉE EN COURS (le taux de PAS et les montants nets
+  // peuvent changer d'une année sur l'autre — ex. taux PAS 1,9% en 2025 vs 2,2% en 2026 —
+  // les mélanger fausserait la référence). Repli sur tout l'historique connu seulement si
+  // l'année en cours n'a encore aucun bulletin réel.
+  function reelsConnus(champ, ratioSurNetFiscal) {
+    const cles = Object.keys(src).filter(function(k){ return src[k] && src[k][champ] != null && (!ratioSurNetFiscal || src[k].netFiscal); });
+    const clesAnnee = cles.filter(function(k){ return k.slice(0,4) === String(annee); });
+    const clesRetenues = clesAnnee.length ? clesAnnee : cles;
+    return clesRetenues.map(function(k){ return ratioSurNetFiscal ? Number(src[k][champ]) / Number(src[k].netFiscal) * 100 : Number(src[k][champ]); });
+  }
+  const netPayeReelsConnus = reelsConnus("netPaye");
+  const netFiscalReelsConnus = reelsConnus("netFiscal");
+  const pasRatiosReelsConnus = reelsConnus("ps", true);
   const moyNetPaye = moyenneRobuste(netPayeReelsConnus);
   const moyNetFiscal = moyenneRobuste(netFiscalReelsConnus);
   const moyTauxPAS = moyenneRobuste(pasRatiosReelsConnus);
@@ -442,18 +452,36 @@ function appliquerPrimes(estimation, config) {
   const baseNoel = (estimation.moisDetail[moisNoel - 1] || {}).salaireBase || 0;
   const primeVacances = round2(baseVac * (Number(config.primeVacancesPct) || 0) / 100);
   const primeNoel = round2(baseNoel * (Number(config.primeNoelPct) || 0) / 100);
+  const tauxPAS = estimation.tauxPASDynamique != null ? Number(estimation.tauxPASDynamique) : Number(config.tauxPAS || 0);
+  // Ratios net/brut et net-fiscal/brut implicites, dérivés d'un mois normal (ni vacances ni
+  // Noël) réel ou estimé : une prime est cotisée comme le salaire, elle n'arrive pas à 100%
+  // en net payé NI en net fiscal. Sans ces ratios, l'ajout brut intégral gonflait
+  // excessivement net payé et net fiscal du mois de la prime, de façon incohérente entre eux.
+  const moisNormalRef = estimation.moisDetail.filter(function(m){ return m.mois !== moisVac && m.mois !== moisNoel; })[0];
+  const grossNormalRef = moisNormalRef ? (Number(moisNormalRef.salaireBase) + Number(moisNormalRef.primeExperience)) : 0;
+  const ratioNetSurBrutImplicite = (moisNormalRef && grossNormalRef > 0) ? (Number(moisNormalRef.netEstime) / grossNormalRef) : 1;
+  const ratioNetFiscalSurBrutImplicite = (moisNormalRef && grossNormalRef > 0) ? (Number(moisNormalRef.netFiscalEstime) / grossNormalRef) : 1;
   const moisDetail = estimation.moisDetail.map(function(m) {
-    let ajout = 0;
-    if (m.mois === moisVac) ajout += primeVacances;
-    if (m.mois === moisNoel) ajout += primeNoel;
-    if (ajout <= 0) return m;
+    let ajoutBrut = 0;
+    if (m.mois === moisVac) ajoutBrut += primeVacances;
+    if (m.mois === moisNoel) ajoutBrut += primeNoel;
+    if (ajoutBrut <= 0) return m;
     // Le bulletin réel inclut déjà la prime effectivement versée : on ne l'ajoute au net/net
     // fiscal QUE pour un mois sans bulletin réel (sinon double-comptage). Le total du mois
-    // reste toujours augmenté (affichage informatif), comme avant.
-    const ajoutNet = m.estimeSalaire ? ajout : 0;
-    return { ...m, totalMois: round2(m.totalMois + ajout), netEstime: round2(m.netEstime + ajoutNet), netFiscalEstime: round2(m.netFiscalEstime + ajoutNet) };
+    // reste toujours augmenté du brut intégral (affichage informatif), comme avant.
+    const ajoutNetFiscal = m.estimeSalaire ? round2(ajoutBrut * ratioNetFiscalSurBrutImplicite) : 0;
+    const ajoutNetPaye = m.estimeSalaire ? round2(ajoutBrut * ratioNetSurBrutImplicite) : 0;
+    const netFiscalEstime = round2(m.netFiscalEstime + ajoutNetFiscal);
+    // Le PAS doit suivre le net fiscal une fois la prime ajoutée — sinon il reste bloqué à
+    // l'ancienne valeur (celle d'un mois normal), ce qui est incohérent avec un net fiscal
+    // nettement plus élevé.
+    const pasEstime = m.estimeSalaire ? round2(netFiscalEstime * tauxPAS / 100) : m.pasEstime;
+    return { ...m, totalMois: round2(m.totalMois + ajoutBrut), netEstime: round2(m.netEstime + ajoutNetPaye), netFiscalEstime: netFiscalEstime, pasEstime: pasEstime };
   });
-  return { ...estimation, moisDetail: moisDetail, primeVacances: primeVacances, primeNoel: primeNoel, totalGeneral: round2(estimation.totalGeneral + primeVacances + primeNoel) };
+  return { ...estimation, moisDetail: moisDetail, primeVacances: primeVacances, primeNoel: primeNoel,
+    primeVacancesNetPaye: round2(primeVacances * ratioNetSurBrutImplicite), primeVacancesNetFiscal: round2(primeVacances * ratioNetFiscalSurBrutImplicite),
+    primeNoelNetPaye: round2(primeNoel * ratioNetSurBrutImplicite), primeNoelNetFiscal: round2(primeNoel * ratioNetFiscalSurBrutImplicite),
+    ratioNetSurBrutImplicite: round2(ratioNetSurBrutImplicite * 100), totalGeneral: round2(estimation.totalGeneral + primeVacances + primeNoel) };
 }
 
 function archiverAnnee(estimation) {
@@ -479,7 +507,7 @@ function archiverAnnee(estimation) {
   texte += "Brut annuel estimé : " + formatEUR(estimation.totalBrut) + " — Net payé estimé : " + formatEUR(estimation.totalNet) + "\n";
   texte += "Net fiscal estimé : " + formatEUR(estimation.totalNetFiscal) + " — PAS estimé : " + formatEUR(estimation.totalPAS) + "\n";
   texte += "Mutuelle conjoint (annuel) : " + formatEUR(estimation.parametres.mutuelleConjointMensuel * 12) + " — Prime transport (annuel) : " + formatEUR(estimation.totalTransport) + "\n";
-  texte += "Prime de vacances : " + (estimation.primeVacances != null ? formatEUR(estimation.primeVacances) : "à renseigner") + " — Prime de Noël : " + (estimation.primeNoel != null ? formatEUR(estimation.primeNoel) : "à renseigner") + "\n";
+  texte += "Prime de vacances (brut) : " + (estimation.primeVacances != null ? formatEUR(estimation.primeVacances) : "à renseigner") + " — Prime de Noël (brut) : " + (estimation.primeNoel != null ? formatEUR(estimation.primeNoel) : "à renseigner") + "\n";
   if (estimation.totalInteressement) texte += "Intéressement/participation inclus : " + formatEUR(estimation.totalInteressement) + "\n";
   texte += "Total RTT pris : " + estimation.totalRTT + " j — Total CP pris : " + estimation.totalCP + " j\n";
   texte += "Mois estimés (données manquantes) : " + estimation.nbMoisEstimes + " / 12\n";
@@ -907,7 +935,8 @@ function App() {
 
   function ajouterArchive(estimation) {
     const sansAncienne = state.archives.filter(function(a) { return a.annee !== estimation.annee; });
-    const next = [...sansAncienne, { annee: estimation.annee, dateArchivage: toLocalISODate(new Date()), estimation: estimation }].sort((a,b) => b.annee - a.annee);
+    const joursPrisAnnee = state.joursPris.filter(function(j) { return j.date.slice(0,4) === String(estimation.annee); });
+    const next = [...sansAncienne, { annee: estimation.annee, dateArchivage: toLocalISODate(new Date()), estimation: estimation, joursPris: joursPrisAnnee, config: state.config }].sort((a,b) => b.annee - a.annee);
     persist({ ...state, archives: next });
   }
   function supprimerArchive(annee) {
@@ -950,8 +979,8 @@ function App() {
   const prochaines = useMemo(function() {
     const items = [];
     [anneeActuelle, anneeActuelle+1].forEach(function(an) {
-      items.push({ date: new Date(an, state.config.moisPrimeVacances-1, 1), label: "Prime de vacances", montant: primeMontant(state.config.primeVacancesPct, state.config.moisPrimeVacances, an) });
-      items.push({ date: new Date(an, state.config.moisPrimeNoel-1, 1), label: "Prime de Noël", montant: primeMontant(state.config.primeNoelPct, state.config.moisPrimeNoel, an) });
+      items.push({ date: new Date(an, state.config.moisPrimeVacances-1, 1), label: "Prime de vacances (brut)", montant: primeMontant(state.config.primeVacancesPct, state.config.moisPrimeVacances, an) });
+      items.push({ date: new Date(an, state.config.moisPrimeNoel-1, 1), label: "Prime de Noël (brut)", montant: primeMontant(state.config.primeNoelPct, state.config.moisPrimeNoel, an) });
     });
     const debutMois = new Date(today.getFullYear(), today.getMonth(), 1);
     return items.filter(i => i.date >= debutMois).sort((a,b) => a.date - b.date).slice(0,3);
@@ -1014,7 +1043,7 @@ function App() {
           <EstimationTab nicolas={nicolas} joursPris={state.joursPris || []} config={state.config} updateConfig={updateConfig}
             archives={state.archives || []} ajouterArchive={ajouterArchive} supprimerArchive={supprimerArchive} anneeActuelle={anneeActuelle} primeMontant={primeMontant} />
         )}
-        {tab === "primes" && <PrimesTab config={state.config} updateConfig={updateConfig} anneeActuelle={anneeActuelle} primeMontant={primeMontant} />}
+        {tab === "primes" && <PrimesTab config={state.config} updateConfig={updateConfig} anneeActuelle={anneeActuelle} primeMontant={primeMontant} nicolas={state.personnes[0]} joursPris={state.joursPris} />}
         {tab === "conges" && (
           <CongesTab
             config={state.config} updateConfig={updateConfig}
@@ -1270,22 +1299,26 @@ function SalairesTab({ personnes, updatePersonnes, config, updateConfig, joursPr
 }
 
 function PrimeBox({ label, montant }) {
-  return (<div className="rounded-lg p-3" style={{ backgroundColor: COLORS.stripe }}>
+  return (<div className="rounded-lg p-2" style={{ backgroundColor: COLORS.stripe }}>
     <p className="text-xs text-stone-500">{label}</p>
-    <p className="font-mono text-lg font-semibold">{montant != null ? formatEUR(montant) : "à renseigner"}</p>
+    <p className="font-mono text-sm font-semibold">{montant != null ? formatEUR(montant) : "à renseigner"}</p>
   </div>);
 }
 
-function PrimesTab({ config, updateConfig, anneeActuelle, primeMontant }) {
+function PrimesTab({ config, updateConfig, anneeActuelle, primeMontant, nicolas, joursPris }) {
+  const estCetteAnnee = appliquerPrimes(estimerAnnee(nicolas, anneeActuelle, joursPris, config), config);
+  const brutAnneeProchaine = { vacances: primeMontant(config.primeVacancesPct, config.moisPrimeVacances, anneeActuelle+1), noel: primeMontant(config.primeNoelPct, config.moisPrimeNoel, anneeActuelle+1) };
   return (
     <div className="space-y-4">
       <Card>
         <p className="text-sm font-medium mb-1">🎁 Prime de vacances</p>
-        <p className="text-xs text-stone-400 mb-3">Versée en {MOIS_FR[config.moisPrimeVacances-1]}, calculée sur le salaire de Nicolas ce mois-là</p>
-        <div className="grid grid-cols-2 gap-3">
-          <PrimeBox label="Cette année" montant={primeMontant(config.primeVacancesPct, config.moisPrimeVacances, anneeActuelle)} />
-          <PrimeBox label="Année prochaine" montant={primeMontant(config.primeVacancesPct, config.moisPrimeVacances, anneeActuelle+1)} />
+        <p className="text-xs text-stone-400 mb-3">Versée en {MOIS_FR[config.moisPrimeVacances-1]}, calculée sur le salaire brut de Nicolas ce mois-là. Le brut est cotisé comme le salaire — le net payé/net fiscal effectifs sont inférieurs.</p>
+        <div className="grid grid-cols-3 gap-2">
+          <PrimeBox label="Brut" montant={estCetteAnnee.primeVacances} />
+          <PrimeBox label="≈ Net payé" montant={estCetteAnnee.primeVacancesNetPaye} />
+          <PrimeBox label="≈ Net fiscal" montant={estCetteAnnee.primeVacancesNetFiscal} />
         </div>
+        <p className="text-xs text-stone-400 mt-2 px-1">Année prochaine (brut) : {brutAnneeProchaine.vacances != null ? formatEUR(brutAnneeProchaine.vacances) : "à renseigner"}</p>
         <div className="grid grid-cols-2 gap-3 mt-3">
           <NumberField label="% du salaire" value={config.primeVacancesPct} onChange={v => updateConfig({ primeVacancesPct: v })} suffix="%" />
           <label className="block">
@@ -1298,11 +1331,13 @@ function PrimesTab({ config, updateConfig, anneeActuelle, primeMontant }) {
       </Card>
       <Card>
         <p className="text-sm font-medium mb-1">🎁 Prime de Noël</p>
-        <p className="text-xs text-stone-400 mb-3">Versée en {MOIS_FR[config.moisPrimeNoel-1]}, calculée sur le salaire de Nicolas ce mois-là</p>
-        <div className="grid grid-cols-2 gap-3">
-          <PrimeBox label="Cette année" montant={primeMontant(config.primeNoelPct, config.moisPrimeNoel, anneeActuelle)} />
-          <PrimeBox label="Année prochaine" montant={primeMontant(config.primeNoelPct, config.moisPrimeNoel, anneeActuelle+1)} />
+        <p className="text-xs text-stone-400 mb-3">Versée en {MOIS_FR[config.moisPrimeNoel-1]}, calculée sur le salaire brut de Nicolas ce mois-là. Le brut est cotisé comme le salaire — le net payé/net fiscal effectifs sont inférieurs.</p>
+        <div className="grid grid-cols-3 gap-2">
+          <PrimeBox label="Brut" montant={estCetteAnnee.primeNoel} />
+          <PrimeBox label="≈ Net payé" montant={estCetteAnnee.primeNoelNetPaye} />
+          <PrimeBox label="≈ Net fiscal" montant={estCetteAnnee.primeNoelNetFiscal} />
         </div>
+        <p className="text-xs text-stone-400 mt-2 px-1">Année prochaine (brut) : {brutAnneeProchaine.noel != null ? formatEUR(brutAnneeProchaine.noel) : "à renseigner"}</p>
         <div className="grid grid-cols-2 gap-3 mt-3">
           <NumberField label="% du salaire" value={config.primeNoelPct} onChange={v => updateConfig({ primeNoelPct: v })} suffix="%" />
           <label className="block">
@@ -1313,7 +1348,7 @@ function PrimesTab({ config, updateConfig, anneeActuelle, primeMontant }) {
           </label>
         </div>
       </Card>
-      <p className="text-xs text-stone-400 px-1">Calculée à partir du salaire réellement saisi pour Nicolas ce mois-là dans l'onglet Salaires.</p>
+      <p className="text-xs text-stone-400 px-1">Calculée à partir du salaire réellement saisi pour Nicolas ce mois-là dans l'onglet Salaires. "≈ Net payé/Net fiscal" utilisent le même ratio implicite que l'onglet Estimations (dérivé d'un mois normal réel).</p>
     </div>
   );
 }
@@ -1387,11 +1422,11 @@ function EstimationTab({ nicolas, joursPris, config, updateConfig, archives, ajo
             <p className="font-mono text-sm font-semibold">{formatEUR(estimation.totalPrime)}</p>
           </div>
           <div className="rounded-lg p-3" style={{ backgroundColor: COLORS.stripe }}>
-            <p className="text-xs text-stone-500">Vacances</p>
+            <p className="text-xs text-stone-500">Vacances (brut)</p>
             <p className="font-mono text-sm font-semibold">{estimation.primeVacances != null ? formatEUR(estimation.primeVacances) : "à renseigner"}</p>
           </div>
           <div className="rounded-lg p-3" style={{ backgroundColor: COLORS.stripe }}>
-            <p className="text-xs text-stone-500">Noël</p>
+            <p className="text-xs text-stone-500">Noël (brut)</p>
             <p className="font-mono text-sm font-semibold">{estimation.primeNoel != null ? formatEUR(estimation.primeNoel) : "à renseigner"}</p>
           </div>
         </div>
@@ -1564,6 +1599,9 @@ function EstimationTab({ nicolas, joursPris, config, updateConfig, archives, ajo
                       );
                     })}
                     <p className="text-xs text-stone-400 mt-1 px-1">TR total {a.estimation.moisDetail.reduce(function(s,m){return s+Number(m.joursTravailles||0);},0)}j · Net fiscal total {formatEUR(a.estimation.totalNetFiscal)} · Net total {formatEUR(a.estimation.totalNet)}</p>
+                    {a.joursPris && (
+                      <p className="text-xs text-stone-400 px-1">🏖️ RTT/CP archivés : {a.joursPris.length} entrée(s) — RTT {a.joursPris.filter(function(j){return j.type==="RTT";}).reduce(function(s,j){return s+Number(j.duree);},0)}j · CP {a.joursPris.filter(function(j){return j.type==="CP";}).reduce(function(s,j){return s+Number(j.duree);},0)}j</p>
+                    )}
                   </div>
                 )}
               </div>
