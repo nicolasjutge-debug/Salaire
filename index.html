@@ -65,6 +65,22 @@
   .focus\:ring-2:focus,.focus\:ring-stone-400:focus{box-shadow:0 0 0 2px #a8a29e}
   .disabled\:opacity-40:disabled{opacity:.4}.disabled\:opacity-50:disabled{opacity:.5}
   button:disabled,input:disabled,select:disabled{cursor:not-allowed}
+
+  /* Aligne la largeur du bandeau d'en-tête et de la ligne de synchronisation sur celle du
+     contenu principal (max-w-xl), pour éviter qu'ils s'étirent seuls sur toute la largeur
+     de l'écran. Écrit en rem : suit automatiquement l'agrandissement de la police racine
+     ci-dessous, sans rien dupliquer. Sans effet sur mobile (déjà plus étroit que 36rem). */
+  header > div, header + div{ max-width:36rem; margin-left:auto; margin-right:auto; }
+
+  /* Confort de lecture PC : hover:hover + pointer:fine détecte une souris ou un trackpad
+     (PC, Mac) — un doigt sur iPhone/iPad reste en pointer:coarse quelle que soit la largeur
+     d'écran, donc ce bloc ne se déclenche jamais sur mobile. Toute la mise en page de
+     l'appli (polices, marges, colonne principale) est construite en rem : remonter la
+     police racine suffit à tout faire grossir ensemble, proportionnellement, sans rien
+     casser ni devoir toucher chaque classe une par une. */
+  @media (min-width: 761px) and (hover: hover) and (pointer: fine){
+    html{ font-size: 20px; }
+  }
 </style>
 </head>
 <body>
