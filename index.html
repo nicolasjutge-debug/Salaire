@@ -79,7 +79,19 @@
      police racine suffit à tout faire grossir ensemble, proportionnellement, sans rien
      casser ni devoir toucher chaque classe une par une. */
   @media (min-width: 761px) and (hover: hover) and (pointer: fine){
-    html{ font-size: 20px; }
+    html{ font-size: 21px; }
+  }
+
+  /* Grand écran + souris : une seule colonne posée au milieu d'un écran large ne fait
+     qu'agrandir le vide autour. Ici, le contenu de l'onglet actif (chaque onglet est un
+     bloc .space-y-4) se répartit sur deux colonnes façon presse — les cartes ne se coupent
+     jamais en deux grâce à break-inside:avoid. L'en-tête suit la même largeur généreuse
+     que la colonne principale, pour rester aligné avec elle. */
+  @media (min-width: 1100px) and (hover: hover) and (pointer: fine){
+    .max-w-xl{ max-width:1100px; }
+    header > div, header + div{ max-width:1100px; }
+    .space-y-4{ columns:2; column-gap:1.75rem; }
+    .space-y-4 > *{ break-inside:avoid; }
   }
 </style>
 </head>
