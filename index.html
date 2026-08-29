@@ -1,0 +1,1963 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Suivi Salaire, RTT & Congés</title>
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1F2B27">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  /* Feuille utilitaire autonome (remplace Tailwind CDN, non chargeable dans l'aperçu Claude) */
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #F7F8F4; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  button { font-family: inherit; cursor: pointer; background: none; border: none; padding: 0; }
+  input, select { font-family: inherit; }
+  .font-display { font-family: 'Fraunces', Georgia, serif; }
+  .font-mono { font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
+  .font-sans { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }
+  .block { display: block; } .flex { display: flex; } .grid { display: grid; }
+  .flex-1 { flex: 1 1 0%; } .flex-col { flex-direction: column; }
+  .items-center { align-items: center; } .items-start { align-items: flex-start; } .items-end { align-items: flex-end; }
+  .justify-between { justify-content: space-between; } .justify-center { justify-content: center; }
+  .shrink-0 { flex-shrink: 0; } .whitespace-nowrap { white-space: nowrap; } .overflow-x-auto { overflow-x: auto; }
+  .grid-cols-2 { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .grid-cols-3 { grid-template-columns: repeat(3, minmax(0,1fr)); }
+  .grid-cols-4 { grid-template-columns: repeat(4, minmax(0,1fr)); }
+  .grid-cols-5 { grid-template-columns: repeat(5, minmax(0,1fr)); }
+  .grid-cols-6 { grid-template-columns: repeat(6, minmax(0,1fr)); }
+  .col-span-2 { grid-column: span 2 / span 2; }
+  .gap-1 { gap: .25rem; } .gap-1\.5 { gap: .375rem; } .gap-2 { gap: .5rem; } .gap-3 { gap: .75rem; } .gap-y-1\.5 { row-gap: .375rem; }
+  .p-2{padding:.5rem}.p-3{padding:.75rem}.p-4{padding:1rem}.p-5{padding:1.25rem}
+  .px-1{padding-left:.25rem;padding-right:.25rem}.px-2{padding-left:.5rem;padding-right:.5rem}
+  .px-3{padding-left:.75rem;padding-right:.75rem}.px-4{padding-left:1rem;padding-right:1rem}.px-5{padding-left:1.25rem;padding-right:1.25rem}
+  .py-1{padding-top:.25rem;padding-bottom:.25rem}.py-1\.5{padding-top:.375rem;padding-bottom:.375rem}
+  .py-2{padding-top:.5rem;padding-bottom:.5rem}.py-2\.5{padding-top:.625rem;padding-bottom:.625rem}.py-3{padding-top:.75rem;padding-bottom:.75rem}
+  .pt-1{padding-top:.25rem}.pt-2{padding-top:.5rem}.pt-3{padding-top:.75rem}.pt-5{padding-top:1.25rem}.pt-6{padding-top:1.5rem}
+  .pb-1{padding-bottom:.25rem}.pb-4{padding-bottom:1rem}.pb-5{padding-bottom:1.25rem}.pb-24{padding-bottom:6rem}
+  .mt-1{margin-top:.25rem}.mt-2{margin-top:.5rem}.mt-3{margin-top:.75rem}.mt-4{margin-top:1rem}
+  .mb-1{margin-bottom:.25rem}.mb-2{margin-bottom:.5rem}.mb-3{margin-bottom:.75rem}.mb-4{margin-bottom:1rem}
+  .mx-auto{margin-left:auto;margin-right:auto}
+  .space-y-1>*+*{margin-top:.25rem}.space-y-3>*+*{margin-top:.75rem}.space-y-4>*+*{margin-top:1rem}
+  .w-full{width:100%}.min-h-screen{min-height:100vh}.max-w-xl{max-width:36rem}.max-w-sm{max-width:24rem}
+  .text-xs{font-size:.75rem;line-height:1rem}.text-sm{font-size:.875rem;line-height:1.25rem}
+  .text-lg{font-size:1.125rem;line-height:1.75rem}.text-xl{font-size:1.25rem;line-height:1.75rem}
+  .text-2xl{font-size:1.5rem;line-height:2rem}.text-3xl{font-size:1.875rem;line-height:2.25rem}
+  .font-medium{font-weight:500}.font-semibold{font-weight:600}
+  .uppercase{text-transform:uppercase}.capitalize{text-transform:capitalize}
+  .tracking-widest{letter-spacing:.1em}.tracking-wide{letter-spacing:.025em}.text-right{text-align:right}
+  .rounded{border-radius:.25rem}.rounded-lg{border-radius:.5rem}.rounded-xl{border-radius:.75rem}
+  .rounded-2xl{border-radius:1rem}.rounded-full{border-radius:9999px}
+  .border{border:1px solid #e7e5e4}.border-t{border-top:1px solid #e7e5e4}.border-transparent{border-color:transparent}
+  .border-stone-100{border-color:#f5f5f4}.border-stone-200{border-color:#e7e5e4}.border-stone-300{border-color:#d6d3d1}
+  .text-stone-400{color:#a8a29e}.text-stone-500{color:#78716c}.text-stone-800{color:#292524}
+  .bg-white{background-color:#fff}.text-white{color:#fff}
+  .fixed{position:fixed}.bottom-0{bottom:0}.left-0{left:0}.right-0{right:0}.top-4{top:1rem}
+  .shadow-lg{box-shadow:0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -4px rgba(0,0,0,.1)}
+  .list-none{list-style:none;margin:0;padding:0}
+  .focus\:outline-none:focus{outline:none}
+  .focus\:ring-2:focus,.focus\:ring-stone-400:focus{box-shadow:0 0 0 2px #a8a29e}
+  .disabled\:opacity-40:disabled{opacity:.4}.disabled\:opacity-50:disabled{opacity:.5}
+  button:disabled,input:disabled,select:disabled{cursor:not-allowed}
+
+  /* Aligne la largeur du bandeau d'en-tête et de la ligne de synchronisation sur celle du
+     contenu principal (max-w-xl), pour éviter qu'ils s'étirent seuls sur toute la largeur
+     de l'écran. Écrit en rem : suit automatiquement l'agrandissement de la police racine
+     ci-dessous, sans rien dupliquer. Sans effet sur mobile (déjà plus étroit que 36rem). */
+  header > div, header + div{ max-width:36rem; margin-left:auto; margin-right:auto; }
+
+  /* Confort de lecture PC : hover:hover + pointer:fine détecte une souris ou un trackpad
+     (PC, Mac) — un doigt sur iPhone/iPad reste en pointer:coarse quelle que soit la largeur
+     d'écran, donc ce bloc ne se déclenche jamais sur mobile. Toute la mise en page de
+     l'appli (polices, marges, colonne principale) est construite en rem : remonter la
+     police racine suffit à tout faire grossir ensemble, proportionnellement, sans rien
+     casser ni devoir toucher chaque classe une par une. */
+  @media (min-width: 761px) and (hover: hover) and (pointer: fine){
+    html{ font-size: 21px; }
+  }
+
+  /* Grand écran + souris : une seule colonne posée au milieu d'un écran large ne fait
+     qu'agrandir le vide autour. Ici, le contenu de l'onglet actif (chaque onglet est un
+     bloc .space-y-4) se répartit sur deux colonnes façon presse — les cartes ne se coupent
+     jamais en deux grâce à break-inside:avoid. L'en-tête suit la même largeur généreuse
+     que la colonne principale, pour rester aligné avec elle. */
+  @media (min-width: 1100px) and (hover: hover) and (pointer: fine){
+    .max-w-xl{ max-width:1100px; }
+    header > div, header + div{ max-width:1100px; }
+    .space-y-4{ columns:2; column-gap:1.75rem; }
+    .space-y-4 > *{ break-inside:avoid; }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+const { useState, useEffect, useMemo } = React;
+const COLORS = {
+  paper: "#F7F8F4",
+  stripe: "#E6ECE1",
+  ink: "#1F2B27",
+  accent: "#35506B",
+  gain: "#4B7A5E",
+  loss: "#9C4A3C",
+  gold: "#96793C",
+  warnBg: "#F3E3DE"
+};
+const MOIS_FR = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+const BASE_CONVENTIONNELLE_HISTORIQUE = { 2022: 1964.17, 2023: 2023.33, 2024: 2068.33, 2025: 2089.17, 2026: 2130.92 };
+const HISTORIQUE = [
+  { periode: "Juillet 2025", paiement: "2025-07-31", salaireRef: 2261.76, brut: 2459.21, netSocial: 1879.17, netPaye: 1779.56, cpAcquis: 27, cpPris: 9, cpSolde: 18 },
+  { periode: "Août 2025", paiement: "2025-08-31", salaireRef: 2261.76, brut: 2449.79, netSocial: 1871.75, netPaye: 1772.29, cpAcquis: 27, cpPris: 13, cpSolde: 14 },
+  { periode: "Novembre 2025", paiement: "2025-11-30", salaireRef: 2261.76, brut: 4709.34, netSocial: 3652.55, netPaye: 3522.18, cpAcquis: 27, cpPris: 24, cpSolde: 3, note: "Prime 13e mois / Noël : 2 259,55 €" },
+  { periode: "Mai 2026", paiement: "2026-05-31", salaireRef: 2284.48, brut: 3626.29, netSocial: 2796.88, netPaye: 2677.83, cpAcquis: 25, cpPris: 10, cpSolde: 15, note: "Demi-prime 13e mois / vacances : 1 140,35 €" }
+];
+const DEFAULT_STATE = {
+  config: {
+    rttBaseAnnuel: 26,
+    cpBaseAnnuel: 27,
+    cpCycleDebut: "01-01",
+    maxRttConsecutifs: 5,
+    primeVacancesPct: 50,
+    moisPrimeVacances: 5,
+    primeNoelPct: 100,
+    moisPrimeNoel: 11,
+    moisInteressement: 7,
+    ticketNombreMois: 18,
+    ticketValeur: 12.2,
+    ticketPartSalarialePct: 40,
+    valorisationConventionDate: "2025-08-01",
+    baseConventionnelleClasse3: 2089.17,
+    croissanceBaseMoyenne: 1.74,
+    valorisationTauxDepart: 9,
+    valorisationIncrementAnnuel: 1.5,
+    valorisationPlafond: 15,
+    referenceSalaire: 2284.48,
+    referenceNetPaye: 1800.98,
+    referenceNetFiscal: 2123.73,
+    referenceTR: 13,
+    mutuelleConjointMensuel: 48.08,
+    tauxPAS: 2.2,
+    abonnementTransportMensuel: 56,
+    remboursementTransportPct: 50,
+    abonnementTransportSuivant: 56,
+    abonnementTransportDateEffet: "2026-12-01",
+    situationFamiliale: "couple",
+    nombreEnfantsCharge: 0,
+    enfantsCollege: 0,
+    enfantsLycee: 0,
+    enfantsSuperieur: 0,
+    cotisationSyndicaleNicolas: 0,
+    baremeSeuil1: 11600,
+    baremeSeuil2: 29579,
+    baremeSeuil3: 84577,
+    baremeSeuil4: 181917,
+    baremeTaux2: 11,
+    baremeTaux3: 30,
+    baremeTaux4: 41,
+    baremeTaux5: 45,
+    decoteSeuilSeul: 1982,
+    decoteSeuilCouple: 3277,
+    decoteConstanteSeul: 897,
+    decoteConstanteCouple: 1483,
+    decoteTauxPct: 45.25,
+    plafondDemiPart: 1807,
+    baremeAnneeReference: 2025,
+    baremeDateMaj: "2026-08-29",
+    rappelBaremeDate: "2027-02-15"
+  },
+  personnes: [
+    { id: "nicolas", nom: "Nicolas", dateEntree: "2019-07-01", inclusFoyerFiscal: true, interessementParAnnee: {}, entreesMensuelles: {
+      "2025-07": { salaire: 2261.76, netFiscal: 2109.67, ps: 40.08, netPaye: 1779.56 },
+      "2025-08": { salaire: 2261.76, netFiscal: 2101.8, ps: 39.93, netPaye: 1772.29 },
+      "2025-11": { salaire: 2261.76, netFiscal: 3976.3, ps: 75.55, netPaye: 3522.18, trManuel: 16 },
+      "2026-01": { salaire: 2284.48, netFiscal: 2123.73, netPaye: 1800.98, trManuel: 13 },
+      "2026-02": { salaire: 2284.48, netFiscal: 2123.73, ps: 46.72, netPaye: 1776.06 },
+      "2026-05": { salaire: 2284.48, netFiscal: 3087.42, ps: 67.92, netPaye: 2677.83 },
+      "2026-06": { salaire: 2284.48, netFiscal: 2123.73, ps: 46.72, netPaye: 1805.34, trManuel: 12 }
+    } },
+    { id: "sarah", nom: "Sarah", dateEntree: "", inclusFoyerFiscal: true, entreesMensuelles: {} },
+    { id: "simon", nom: "Simon", dateEntree: "", inclusFoyerFiscal: false, entreesMensuelles: {} },
+    { id: "nelly", nom: "Nelly", dateEntree: "", inclusFoyerFiscal: false, entreesMensuelles: {} }
+  ],
+  joursPris: [],
+  periodesBloquees: [],
+  archives: [],
+  archivesSalaires: [],
+  archivesPrimes: [],
+  archivesConges: []
+};
+function uid() {
+  return Math.random().toString(36).slice(2, 10);
+}
+function round2(n) {
+  return Math.round(Number(n) * 100) / 100;
+}
+function parseISO(s) {
+  return /* @__PURE__ */ new Date(s + "T00:00:00");
+}
+function toLocalISODate(d) {
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+function formatEUR(n) {
+  return (Number(n) || 0).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "\u00A0€";
+}
+function formatJours(n) {
+  return round2(n || 0).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function formatDateFR(s) {
+  if (!s) return "-";
+  return parseISO(s).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" });
+}
+function formatMoisAnnee(key) {
+  const parts = key.split("-");
+  return MOIS_FR[Number(parts[1]) - 1] + " " + parts[0];
+}
+function moisEcoules(debut, fin) {
+  let m = (fin.getFullYear() - debut.getFullYear()) * 12 + (fin.getMonth() - debut.getMonth());
+  if (fin.getDate() < debut.getDate()) m -= 1;
+  return Math.max(0, m);
+}
+function anneesEcoulees(debut, fin) {
+  let a = fin.getFullYear() - debut.getFullYear();
+  const md = (d) => d.getMonth() * 100 + d.getDate();
+  if (md(fin) < md(debut)) a -= 1;
+  return Math.max(0, a);
+}
+function debutCycle(monthDay, dateRef) {
+  const parts = monthDay.split("-").map(Number);
+  let start = new Date(dateRef.getFullYear(), parts[0] - 1, parts[1]);
+  if (start > dateRef) start = new Date(dateRef.getFullYear() - 1, parts[0] - 1, parts[1]);
+  return start;
+}
+function accrualDepuis(base, dateDebut, dateRef) {
+  const mois = Math.min(12, moisEcoules(dateDebut, dateRef));
+  return round2(Number(base) / 12 * mois);
+}
+function bonusAncienneteJours(annees) {
+  if (annees >= 30) return 15;
+  if (annees >= 20) return 10;
+  if (annees >= 10) return 5;
+  return 0;
+}
+function prochainPalier(dateEntreeStr, dateRef) {
+  if (!dateEntreeStr) return null;
+  const dateEntree = parseISO(dateEntreeStr);
+  const annees = anneesEcoulees(dateEntree, dateRef);
+  const next = [10, 20, 30].filter((p) => p > annees)[0];
+  if (!next) return null;
+  return { annees: next, date: new Date(dateEntree.getFullYear() + next, dateEntree.getMonth(), dateEntree.getDate()) };
+}
+function dansPeriodeBloquee(date, periodes) {
+  const found = periodes.filter((p) => p.dateDebut && p.dateFin && date >= p.dateDebut && date <= p.dateFin);
+  return found.length ? found[0] : null;
+}
+function joursAdjacents(d1, d2) {
+  return (parseISO(d2) - parseISO(d1)) / 864e5 === 1;
+}
+function joursDansPlage(dateDebut, dateFin, excludeWeekends) {
+  const result = [];
+  let d = parseISO(dateDebut);
+  const fin = parseISO(dateFin);
+  while (d <= fin) {
+    const jourSemaine = d.getDay();
+    if (!excludeWeekends || jourSemaine !== 0 && jourSemaine !== 6) result.push(toLocalISODate(d));
+    d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+  }
+  return result;
+}
+function semaineOuvree(dateStr) {
+  const d = parseISO(dateStr);
+  const jourSemaine = d.getDay();
+  const diffLundi = jourSemaine === 0 ? -6 : 1 - jourSemaine;
+  const lundi = new Date(d.getFullYear(), d.getMonth(), d.getDate() + diffLundi);
+  const jours = [];
+  for (let i = 0; i < 5; i++) jours.push(toLocalISODate(new Date(lundi.getFullYear(), lundi.getMonth(), lundi.getDate() + i)));
+  return jours;
+}
+function datePaques(annee) {
+  const a = annee % 19, b = Math.floor(annee / 100), c = annee % 100;
+  const d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const mois = Math.floor((h + l - 7 * m + 114) / 31);
+  const jour = (h + l - 7 * m + 114) % 31 + 1;
+  return new Date(annee, mois - 1, jour);
+}
+function joursFeriesFrance(annee) {
+  const paques = datePaques(annee);
+  const plusJours = function(d, n) {
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+  };
+  const fixes = [
+    new Date(annee, 0, 1),
+    new Date(annee, 4, 1),
+    new Date(annee, 4, 8),
+    new Date(annee, 6, 14),
+    new Date(annee, 7, 15),
+    new Date(annee, 10, 1),
+    new Date(annee, 10, 11),
+    new Date(annee, 11, 25)
+  ];
+  const mobiles = [plusJours(paques, 1), plusJours(paques, 39), plusJours(paques, 50)];
+  return fixes.concat(mobiles).map(toLocalISODate);
+}
+function joursOuvresDansMois(annee, mois) {
+  const debut = new Date(annee, mois - 1, 1);
+  const fin = new Date(annee, mois, 0);
+  const feries = joursFeriesFrance(annee);
+  let count = 0;
+  let d = new Date(debut);
+  while (d <= fin) {
+    const js = d.getDay();
+    if (js !== 0 && js !== 6 && feries.indexOf(toLocalISODate(d)) === -1) count++;
+    d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+  }
+  return count;
+}
+function calculRTTMensuel(annee, joursPris, base, dateEntreeStr) {
+  const dateEntree = dateEntreeStr ? parseISO(dateEntreeStr) : null;
+  const lignes = [];
+  let cumule = 0;
+  for (let m = 1; m <= 12; m++) {
+    const key = annee + "-" + String(m).padStart(2, "0");
+    const debutMois = new Date(annee, m - 1, 1);
+    const finMois = new Date(annee, m, 0);
+    let acquisMois = Number(base) / 12;
+    if (dateEntree && dateEntree > finMois) {
+      acquisMois = 0;
+    } else if (dateEntree && dateEntree > debutMois && dateEntree <= finMois) {
+      const joursDansLeMois = finMois.getDate();
+      const joursRestants = joursDansLeMois - dateEntree.getDate() + 1;
+      acquisMois = Number(base) / 12 * (joursRestants / joursDansLeMois);
+    }
+    acquisMois = round2(acquisMois);
+    const prisMois = joursPris.filter(function(j) {
+      return j.date.slice(0, 7) === key && j.type === "RTT";
+    }).reduce(function(s, j) {
+      return s + Number(j.duree);
+    }, 0);
+    const soldeMois = round2(acquisMois - prisMois);
+    cumule = round2(cumule + soldeMois);
+    lignes.push({ mois: m, acquis: acquisMois, pris: prisMois, soldeMois, soldeCumule: cumule });
+  }
+  return lignes;
+}
+function anneeRevalorisation(annee, mois) {
+  return mois >= 8 ? annee : annee - 1;
+}
+function tauxValorisationPourAnnee(annee, mois, config) {
+  const anneeEffective = anneeRevalorisation(annee, mois);
+  const depart = Number(config.valorisationTauxDepart != null ? config.valorisationTauxDepart : 9);
+  const increment = Number(config.valorisationIncrementAnnuel != null ? config.valorisationIncrementAnnuel : 1.5);
+  const plafond = Number(config.valorisationPlafond != null ? config.valorisationPlafond : 15);
+  if (anneeEffective <= 2025) return depart;
+  const taux = depart + (anneeEffective - 2025) * increment;
+  return Math.min(plafond, round2(taux));
+}
+function baseConventionnellePourAnnee(anneeEffective, config) {
+  if (BASE_CONVENTIONNELLE_HISTORIQUE[anneeEffective] != null) return BASE_CONVENTIONNELLE_HISTORIQUE[anneeEffective];
+  if (anneeEffective < 2022) return Number(config.baseConventionnelleClasse3) || BASE_CONVENTIONNELLE_HISTORIQUE[2022];
+  const croissance = Number(config.croissanceBaseMoyenne != null ? config.croissanceBaseMoyenne : 1.74) / 100;
+  let base = BASE_CONVENTIONNELLE_HISTORIQUE[2026];
+  for (let a = 2027; a <= anneeEffective; a++) base = base * (1 + croissance);
+  return round2(base);
+}
+function primeExperienceMensuelle(annee, mois, config) {
+  const anneeEffective = anneeRevalorisation(annee, mois);
+  const base = baseConventionnellePourAnnee(anneeEffective, config);
+  const taux = tauxValorisationPourAnnee(annee, mois, config);
+  return { base, taux, montant: round2(base * taux / 100) };
+}
+function estimerAnnee(personne, annee, joursPris, config, suiviConges) {
+  const src = personne.entreesMensuelles || {};
+  const connues = Object.keys(src).filter(function(k) {
+    return src[k] && src[k].salaire;
+  }).sort();
+  let dernierConnu = null;
+  connues.forEach(function(k) {
+    if (k <= annee + "-12") dernierConnu = Number(src[k].salaire);
+  });
+  if (dernierConnu == null && connues.length) dernierConnu = Number(src[connues[0]].salaire);
+  const dateValorisation = config.valorisationConventionDate || "2025-08-01";
+  const moisDetail = [];
+  let totalSalaire = 0, totalPrime = 0, totalTR = 0, totalTickets = 0, totalRTT = 0, totalCP = 0, totalBrut = 0, totalNet = 0, totalNetFiscal = 0, totalPAS = 0, totalTransport = 0, totalInteressement = 0;
+  const salairesReelsOrdonnes = connues.map(function(k) {
+    return { key: k, val: Number(src[k].salaire) };
+  });
+  function moyenneRobuste(valeurs) {
+    if (!valeurs.length) return null;
+    const tries = valeurs.slice().sort(function(a, b) {
+      return a - b;
+    });
+    const mid = Math.floor(tries.length / 2);
+    const mediane = tries.length % 2 ? tries[mid] : (tries[mid - 1] + tries[mid]) / 2;
+    const filtrees = mediane ? valeurs.filter(function(v) {
+      return Math.abs(v - mediane) / mediane <= 0.15;
+    }) : valeurs;
+    const base = filtrees.length ? filtrees : valeurs;
+    return base.reduce(function(s, v) {
+      return s + v;
+    }, 0) / base.length;
+  }
+  let baseCourante = (function() {
+    const avant = salairesReelsOrdonnes.filter(function(x) {
+      return x.key < annee + "-01";
+    }).map(function(x) {
+      return x.val;
+    });
+    const moy = moyenneRobuste(avant);
+    return moy != null ? round2(moy) : dernierConnu;
+  })();
+  function reelsConnus(champ, ratioSurNetFiscal) {
+    const cles = Object.keys(src).filter(function(k) {
+      return src[k] && src[k][champ] != null && (!ratioSurNetFiscal || src[k].netFiscal);
+    });
+    const clesAnnee = cles.filter(function(k) {
+      return k.slice(0, 4) === String(annee);
+    });
+    const clesRetenues = clesAnnee.length ? clesAnnee : cles;
+    return clesRetenues.map(function(k) {
+      return ratioSurNetFiscal ? Number(src[k][champ]) / Number(src[k].netFiscal) * 100 : Number(src[k][champ]);
+    });
+  }
+  const netPayeReelsConnus = reelsConnus("netPaye");
+  const netFiscalReelsConnus = reelsConnus("netFiscal");
+  const pasRatiosReelsConnus = reelsConnus("ps", true);
+  const moyNetPaye = moyenneRobuste(netPayeReelsConnus);
+  const moyNetFiscal = moyenneRobuste(netFiscalReelsConnus);
+  const moyTauxPAS = moyenneRobuste(pasRatiosReelsConnus);
+  const referenceNetPayeDynamique = moyNetPaye != null ? round2(moyNetPaye) : Number(config.referenceNetPaye || 0);
+  const referenceNetFiscalDynamique = moyNetFiscal != null ? round2(moyNetFiscal) : Number(config.referenceNetFiscal || 0);
+  const tauxPASDynamique = moyTauxPAS != null ? moyTauxPAS : Number(config.tauxPAS || 0);
+  for (let m = 1; m <= 12; m++) {
+    const key = annee + "-" + String(m).padStart(2, "0");
+    const reel = src[key];
+    const augmentationPct = reel && reel.augmentationPct !== void 0 && reel.augmentationPct !== "" && reel.augmentationPct !== null ? Number(reel.augmentationPct) : 0;
+    if (m === 1 && augmentationPct && baseCourante != null) baseCourante = round2(baseCourante * (1 + augmentationPct / 100));
+    const estimeSalaire = !(reel && reel.salaire);
+    const estMoisRef = estimeSalaire;
+    const apresValorisation = key >= dateValorisation.slice(0, 7);
+    let salaireBase = estimeSalaire ? baseCourante : Number(reel.salaire);
+    if (!estimeSalaire) {
+      const jusquIci = salairesReelsOrdonnes.filter(function(x) {
+        return x.key <= key;
+      }).map(function(x) {
+        return x.val;
+      });
+      const moy = moyenneRobuste(jusquIci);
+      baseCourante = moy != null ? round2(moy) : baseCourante;
+    }
+    const valorisationAppliquee = false;
+    const primeExpInfo = primeExperienceMensuelle(annee, m, config);
+    const tauxValoAnnee = primeExpInfo.taux;
+    salaireBase = salaireBase || 0;
+    const baseConv = primeExpInfo.base;
+    const primeExperience = primeExpInfo.montant;
+    const interessementAnnee = personne.interessementParAnnee && personne.interessementParAnnee[annee] || {};
+    const estMoisInteressement = Number(m) === Number(config.moisInteressement || 7);
+    const interessementNetFiscal = estMoisInteressement ? Number(interessementAnnee.netFiscal || 0) : 0;
+    const interessementNetPaye = estMoisInteressement ? Number(interessementAnnee.netPaye || 0) : 0;
+    const brutEstime = round2(salaireBase + primeExperience);
+    const joursOuvres = joursOuvresDansMois(annee, m);
+    const rttPrisMois = suiviConges === false ? 0 : joursPris.filter(function(j) {
+      return j.date.slice(0, 7) === key && j.type === "RTT";
+    }).reduce(function(s, j) {
+      return s + Number(j.duree);
+    }, 0);
+    const cpPrisMois = suiviConges === false ? 0 : joursPris.filter(function(j) {
+      return j.date.slice(0, 7) === key && j.type === "CP";
+    }).reduce(function(s, j) {
+      return s + Number(j.duree);
+    }, 0);
+    const estJourOuvreTR = function(j) {
+      const d = parseISO(j.date);
+      const js = d.getDay();
+      return js !== 0 && js !== 6 && joursFeriesFrance(d.getFullYear()).indexOf(j.date) === -1;
+    };
+    const deduitTR = function(j) {
+      return (j.type === "RTT" || j.type === "CP" || j.type === "Formation" || j.type === "PontOffert") && estJourOuvreTR(j);
+    };
+    const moisPrec = m === 1 ? { a: annee - 1, m: 12 } : { a: annee, m: m - 1 };
+    const keyPrec = moisPrec.a + "-" + String(moisPrec.m).padStart(2, "0");
+    const rttPrisOuvre = suiviConges === false ? 0 : joursPris.filter(function(j) {
+      return j.date.slice(0, 7) === keyPrec && deduitTR(j);
+    }).reduce(function(s, j) {
+      return s + Number(j.duree);
+    }, 0);
+    const cpPrisOuvre = 0;
+    const joursTravaillesCalcule = Math.max(0, joursOuvres - rttPrisOuvre - cpPrisOuvre);
+    const trManuel = reel && reel.trManuel !== void 0 && reel.trManuel !== "" && reel.trManuel !== null ? Number(reel.trManuel) : null;
+    const joursTravailles = trManuel != null ? trManuel : joursTravaillesCalcule;
+    const trEstManuel = trManuel != null;
+    const joursDeduits = rttPrisOuvre + cpPrisOuvre;
+    const valeurTR = round2(joursTravailles * (Number(config.ticketValeur) || 0) * (Number(config.ticketPartSalarialePct) || 0) / 100);
+    const valeurTREmployeur = round2(joursTravailles * (Number(config.ticketValeur) || 0) * (100 - (Number(config.ticketPartSalarialePct) || 0)) / 100);
+    const ecartTR = joursTravailles - Number(config.referenceTR || 0);
+    const ajustementTR = round2(ecartTR * (Number(config.ticketValeur) || 0) * (Number(config.ticketPartSalarialePct) || 0) / 100);
+    const netFiscalReel = reel && reel.netFiscal ? Number(reel.netFiscal) : null;
+    const netFiscalEstime = netFiscalReel != null ? netFiscalReel : round2(referenceNetFiscalDynamique + interessementNetFiscal);
+    const pasRatio = round2(netFiscalEstime * tauxPASDynamique / 100);
+    const pasEstime = reel && reel.ps ? Number(reel.ps) : pasRatio;
+    const mutuelleConjoint = Number(config.mutuelleConjointMensuel) || 0;
+    const netEstimeRatioBase = round2(referenceNetPayeDynamique - ajustementTR);
+    const netPayeReel = reel && reel.netPaye ? Number(reel.netPaye) : null;
+    const netEstime = netPayeReel != null ? netPayeReel : round2(netEstimeRatioBase + interessementNetPaye);
+    const netFiscalDepuisReel = !!(reel && reel.netFiscal);
+    const dateEffetTransport = config.abonnementTransportDateEffet || "2099-01-01";
+    const abonnementApplicable = key >= dateEffetTransport.slice(0, 7) ? Number(config.abonnementTransportSuivant || config.abonnementTransportMensuel || 0) : Number(config.abonnementTransportMensuel || 0);
+    const primeTransport = round2(abonnementApplicable * Number(config.remboursementTransportPct || 0) / 100);
+    const totalMois = round2(salaireBase + primeExperience + primeTransport + interessementNetPaye);
+    moisDetail.push({
+      mois: m,
+      key,
+      estimeSalaire,
+      apresValorisation,
+      valorisationAppliquee,
+      salaireBase,
+      primeExperience,
+      brutEstime,
+      netEstime,
+      netFiscalEstime,
+      pasEstime,
+      mutuelleConjoint,
+      primeTransport,
+      baseConventionnelle: baseConv,
+      tauxValorisationAnnee: tauxValoAnnee,
+      joursOuvres,
+      rttPris: rttPrisMois,
+      cpPris: cpPrisMois,
+      joursDeduits,
+      joursTravailles,
+      ticketsEstimes: joursTravailles,
+      trEstManuel,
+      estRefMois: estMoisRef,
+      ecartTR,
+      ajustementTR,
+      netFiscalDepuisReel,
+      joursTravaillesCalcule,
+      valeurTR,
+      valeurTREmployeur,
+      totalMois,
+      interessement: interessementNetPaye,
+      interessementNetFiscal,
+      interessementNetPaye,
+      augmentationPct: m === 1 ? augmentationPct : 0
+    });
+    totalSalaire += salaireBase;
+    totalPrime += primeExperience;
+    totalTR += valeurTR;
+    totalTickets += joursTravailles;
+    totalRTT += rttPrisMois;
+    totalCP += cpPrisMois;
+    totalBrut += brutEstime;
+    totalNet += netEstime;
+    totalNetFiscal += netFiscalEstime;
+    totalPAS += pasEstime;
+    totalTransport += primeTransport;
+    totalInteressement += interessementNetPaye;
+  }
+  const primeExpInfoAnnuel = primeExperienceMensuelle(annee, 12, config);
+  return {
+    annee,
+    moisDetail,
+    totalSalaire: round2(totalSalaire),
+    totalPrime: round2(totalPrime),
+    totalTR: round2(totalTR),
+    totalTickets,
+    totalRTT,
+    totalCP,
+    totalBrut: round2(totalBrut),
+    totalNet: round2(totalNet),
+    totalNetFiscal: round2(totalNetFiscal),
+    totalPAS: round2(totalPAS),
+    totalTransport: round2(totalTransport),
+    totalInteressement: round2(totalInteressement),
+    totalGeneral: round2(totalSalaire + totalPrime + totalTransport + totalInteressement),
+    referenceNetPayeDynamique,
+    referenceNetFiscalDynamique,
+    tauxPASDynamique: round2(tauxPASDynamique),
+    nbBulletinsReels: connues.length,
+    dernierConnu,
+    moyenneSalaireReel: baseCourante,
+    nbMoisEstimes: moisDetail.filter(function(m) {
+      return m.estimeSalaire;
+    }).length,
+    parametres: {
+      tauxPrimeExperience: primeExpInfoAnnuel.taux,
+      valorisationTauxAnnee: tauxValorisationPourAnnee(annee, 12, config),
+      baseConventionnelleClasse3: Number(config.baseConventionnelleClasse3) || 0,
+      valorisationConventionDate: dateValorisation,
+      ticketValeur: Number(config.ticketValeur) || 0,
+      ticketPartSalarialePct: Number(config.ticketPartSalarialePct) || 0,
+      mutuelleConjointMensuel: Number(config.mutuelleConjointMensuel) || 0,
+      tauxPAS: Number(config.tauxPAS) || 0,
+      abonnementTransportMensuel: Number(config.abonnementTransportMensuel) || 0,
+      remboursementTransportPct: Number(config.remboursementTransportPct) || 0
+    }
+  };
+}
+function appliquerPrimes(estimation, config) {
+  const moisVac = Number(config.moisPrimeVacances) || 5;
+  const moisNoel = Number(config.moisPrimeNoel) || 11;
+  const baseVac = (estimation.moisDetail[moisVac - 1] || {}).salaireBase || 0;
+  const baseNoel = (estimation.moisDetail[moisNoel - 1] || {}).salaireBase || 0;
+  const primeVacances = round2(baseVac * (Number(config.primeVacancesPct) || 0) / 100);
+  const primeNoel = round2(baseNoel * (Number(config.primeNoelPct) || 0) / 100);
+  const tauxPAS = estimation.tauxPASDynamique != null ? Number(estimation.tauxPASDynamique) : Number(config.tauxPAS || 0);
+  const moisNormalRef = estimation.moisDetail.filter(function(m) {
+    return m.mois !== moisVac && m.mois !== moisNoel;
+  })[0];
+  const grossNormalRef = moisNormalRef ? Number(moisNormalRef.salaireBase) + Number(moisNormalRef.primeExperience) : 0;
+  const ratioNetSurBrutImplicite = moisNormalRef && grossNormalRef > 0 ? Number(moisNormalRef.netEstime) / grossNormalRef : 1;
+  const ratioNetFiscalSurBrutImplicite = moisNormalRef && grossNormalRef > 0 ? Number(moisNormalRef.netFiscalEstime) / grossNormalRef : 1;
+  const moisDetail = estimation.moisDetail.map(function(m) {
+    let ajoutBrut = 0;
+    if (m.mois === moisVac) ajoutBrut += primeVacances;
+    if (m.mois === moisNoel) ajoutBrut += primeNoel;
+    if (ajoutBrut <= 0) return m;
+    const ajoutNetFiscal = m.estimeSalaire ? round2(ajoutBrut * ratioNetFiscalSurBrutImplicite) : 0;
+    const ajoutNetPaye = m.estimeSalaire ? round2(ajoutBrut * ratioNetSurBrutImplicite) : 0;
+    const netFiscalEstime = round2(m.netFiscalEstime + ajoutNetFiscal);
+    const pasEstime = m.estimeSalaire ? round2(netFiscalEstime * tauxPAS / 100) : m.pasEstime;
+    return { ...m, totalMois: round2(m.totalMois + ajoutBrut), netEstime: round2(m.netEstime + ajoutNetPaye), netFiscalEstime, pasEstime };
+  });
+  return {
+    ...estimation,
+    moisDetail,
+    primeVacances,
+    primeNoel,
+    primeVacancesNetPaye: round2(primeVacances * ratioNetSurBrutImplicite),
+    primeVacancesNetFiscal: round2(primeVacances * ratioNetFiscalSurBrutImplicite),
+    primeNoelNetPaye: round2(primeNoel * ratioNetSurBrutImplicite),
+    primeNoelNetFiscal: round2(primeNoel * ratioNetFiscalSurBrutImplicite),
+    ratioNetSurBrutImplicite: round2(ratioNetSurBrutImplicite * 100),
+    totalGeneral: round2(estimation.totalGeneral + primeVacances + primeNoel)
+  };
+}
+function totauxPersonneAnnee(personne, annee, joursPris, config) {
+  let netFiscal = 0, ps = 0, netPaye = 0, salaire = 0;
+  if (personne.id === "nicolas") {
+    const estimation = appliquerPrimes(estimerAnnee(personne, annee, joursPris || [], config), config);
+    estimation.moisDetail.forEach(function(m) {
+      netFiscal += Number(m.netFiscalEstime) || 0;
+      ps += Number(m.pasEstime) || 0;
+      netPaye += Number(m.netEstime) || 0;
+      salaire += Number(m.salaireBase) || 0;
+    });
+  } else {
+    for (let mois = 1; mois <= 12; mois++) {
+      const cle = annee + "-" + String(mois).padStart(2, "0");
+      const e = (personne.entreesMensuelles || {})[cle];
+      if (e) {
+        netFiscal += Number(e.netFiscal) || 0;
+        ps += Number(e.ps) || 0;
+        netPaye += Number(e.netPaye) || 0;
+        salaire += Number(e.salaire) || 0;
+      }
+    }
+  }
+  return { netFiscal: round2(netFiscal), ps: round2(ps), netPaye: round2(netPaye), salaire: round2(salaire) };
+}
+function calculTranches(revenuParPart, config) {
+  const r = Math.max(0, Number(revenuParPart) || 0);
+  const s1 = Number(config.baremeSeuil1) || 0;
+  const s2 = Number(config.baremeSeuil2) || 0;
+  const s3 = Number(config.baremeSeuil3) || 0;
+  const s4 = Number(config.baremeSeuil4) || 0;
+  const t2 = Number(config.baremeTaux2) || 0;
+  const t3 = Number(config.baremeTaux3) || 0;
+  const t4 = Number(config.baremeTaux4) || 0;
+  const t5 = Number(config.baremeTaux5) || 0;
+  let impot = 0;
+  if (r > s1) impot += (Math.min(r, s2) - s1) * t2 / 100;
+  if (r > s2) impot += (Math.min(r, s3) - s2) * t3 / 100;
+  if (r > s3) impot += (Math.min(r, s4) - s3) * t4 / 100;
+  if (r > s4) impot += (r - s4) * t5 / 100;
+  return impot;
+}
+function nombreDeParts(situationFamiliale, nombreEnfants) {
+  const partsAdultes = situationFamiliale === "couple" ? 2 : 1;
+  const n = Math.max(0, Number(nombreEnfants) || 0);
+  let partsEnfants = 0;
+  if (n >= 1) partsEnfants += 0.5;
+  if (n >= 2) partsEnfants += 0.5;
+  if (n >= 3) partsEnfants += n - 2;
+  return { partsAdultes, partsEnfants: round2(partsEnfants), partsTotal: round2(partsAdultes + partsEnfants) };
+}
+function calculerImpotFoyer(revenuImposable, situationFamiliale, nombreEnfants, config) {
+  const revenu = Math.max(0, Number(revenuImposable) || 0);
+  const parts = nombreDeParts(situationFamiliale, nombreEnfants);
+  const partsAdultes = parts.partsAdultes, partsEnfants = parts.partsEnfants, partsTotal = parts.partsTotal;
+  const impotSansEnfants = round2(calculTranches(revenu / partsAdultes, config) * partsAdultes);
+  const impotAvecEnfants = round2(calculTranches(revenu / partsTotal, config) * partsTotal);
+  const avantageQF = round2(Math.max(0, impotSansEnfants - impotAvecEnfants));
+  const nbDemiParts = round2(partsEnfants / 0.5);
+  const plafond = round2(nbDemiParts * (Number(config.plafondDemiPart) || 0));
+  let impotBrut = impotAvecEnfants;
+  let plafonnementApplique = false;
+  if (partsEnfants > 0 && avantageQF > plafond) {
+    impotBrut = round2(impotSansEnfants - plafond);
+    plafonnementApplique = true;
+  }
+  const estCouple = situationFamiliale === "couple";
+  const seuilDecote = Number(estCouple ? config.decoteSeuilCouple : config.decoteSeuilSeul) || 0;
+  const constanteDecote = Number(estCouple ? config.decoteConstanteCouple : config.decoteConstanteSeul) || 0;
+  const tauxDecote = Number(config.decoteTauxPct) || 0;
+  let decote = 0;
+  if (impotBrut > 0 && impotBrut < seuilDecote) {
+    decote = Math.min(impotBrut, Math.max(0, round2(constanteDecote - impotBrut * tauxDecote / 100)));
+  }
+  const impotApresDecote = round2(Math.max(0, impotBrut - decote));
+  return { revenu, partsAdultes, partsEnfants, partsTotal, impotSansEnfants, impotAvecEnfants, avantageQF, plafond, plafonnementApplique, impotBrut, seuilDecote, decote, impotApresDecote };
+}
+function calculerReductionSyndicale(cotisationAnnuelle, revenuFiscalIndividuel) {
+  const cotisation = Math.max(0, Number(cotisationAnnuelle) || 0);
+  const plafondBase = round2(Math.max(0, Number(revenuFiscalIndividuel) || 0) * 0.01);
+  const baseRetenue = round2(Math.min(cotisation, plafondBase));
+  const credit = round2(baseRetenue * 0.66);
+  return { cotisation, plafondBase, baseRetenue, credit };
+}
+function calculerReductionScolarite(nbCollege, nbLycee, nbSuperieur) {
+  const college = round2(Math.max(0, Number(nbCollege) || 0) * 61);
+  const lycee = round2(Math.max(0, Number(nbLycee) || 0) * 153);
+  const superieur = round2(Math.max(0, Number(nbSuperieur) || 0) * 183);
+  return { college, lycee, superieur, total: round2(college + lycee + superieur) };
+}
+function archiverAnnee(estimation) {
+  let texte = "ARCHIVE " + estimation.annee + " — Estimation salariale annuelle — Nicolas Jutge\n";
+  texte += "Générée le " + formatDateFR(toLocalISODate(/* @__PURE__ */ new Date())) + "\n";
+  texte += "========================================================\n\n";
+  texte += "HYPOTHESES ET PARAMETRES\n";
+  texte += "- Salaire de base pour les mois non renseignés : moyenne des mois réels connus (" + formatEUR(estimation.moyenneSalaireReel || 0) + ")\n";
+  texte += "- Prime d'expérience : base " + formatEUR(estimation.parametres.baseConventionnelleClasse3) + " × taux " + estimation.parametres.tauxPrimeExperience + " % (= taux de revalorisation " + estimation.annee + ")\n";
+  texte += "- Base conventionnelle Classe 3 : " + formatEUR(estimation.parametres.baseConventionnelleClasse3) + ", revalorisée à " + estimation.parametres.valorisationTauxAnnee + " % pour " + estimation.annee + " (mois estimés à partir de " + formatDateFR(estimation.parametres.valorisationConventionDate) + ")\n";
+  texte += "- Titre-restaurant : 1 par jour ouvré réellement travaillé (jours ouvrés du mois - RTT/CP/Formation/Pont offert posés le mois précédent), valeur " + formatEUR(estimation.parametres.ticketValeur) + ", part salariale " + estimation.parametres.ticketPartSalarialePct + " %\n\n";
+  texte += "DETAIL MENSUEL\n";
+  texte += "Mois          Salaire      Prime exp.   Jours trav.  TR (valeur)   Total mois\n";
+  estimation.moisDetail.forEach(function(m) {
+    const nomMois = MOIS_FR[m.mois - 1];
+    texte += nomMois.padEnd(14, " ") + formatEUR(m.salaireBase).padEnd(13, " ") + formatEUR(m.primeExperience).padEnd(13, " ") + String(m.joursTravailles).padEnd(13, " ") + formatEUR(m.valeurTR).padEnd(14, " ") + formatEUR(m.totalMois) + (m.estimeSalaire ? "  (estimé)" : "") + "\n";
+  });
+  texte += "\n----------------------------------------\n";
+  texte += "Total salaire annuel : " + formatEUR(estimation.totalSalaire) + "\n";
+  texte += "Total prime d'expérience : " + formatEUR(estimation.totalPrime) + "\n";
+  texte += "Total général (salaire + prime) : " + formatEUR(estimation.totalGeneral) + "\n";
+  texte += "Total titres-restaurant : " + formatEUR(estimation.totalTR) + " (" + estimation.totalTickets + " jours travaillés)\n";
+  texte += "Brut annuel estimé : " + formatEUR(estimation.totalBrut) + " — Net payé estimé : " + formatEUR(estimation.totalNet) + "\n";
+  texte += "Net fiscal estimé : " + formatEUR(estimation.totalNetFiscal) + " — PAS estimé : " + formatEUR(estimation.totalPAS) + "\n";
+  texte += "Mutuelle conjoint (annuel) : " + formatEUR(estimation.parametres.mutuelleConjointMensuel * 12) + " — Prime transport (annuel) : " + formatEUR(estimation.totalTransport) + "\n";
+  texte += "Prime de vacances (brut) : " + (estimation.primeVacances != null ? formatEUR(estimation.primeVacances) : "à renseigner") + " — Prime de Noël (brut) : " + (estimation.primeNoel != null ? formatEUR(estimation.primeNoel) : "à renseigner") + "\n";
+  if (estimation.totalInteressement) texte += "Intéressement/participation inclus : " + formatEUR(estimation.totalInteressement) + "\n";
+  texte += "Total RTT pris : " + estimation.totalRTT + " j — Total CP pris : " + estimation.totalCP + " j\n";
+  texte += "Mois estimés (données manquantes) : " + estimation.nbMoisEstimes + " / 12\n";
+  if (estimation.rttMensuel) {
+    texte += "\nRTT MENSUEL\nMois          Acquis   Pris     Solde    Cumulé\n";
+    estimation.rttMensuel.forEach(function(l) {
+      texte += MOIS_FR[l.mois - 1].padEnd(14, " ") + String(l.acquis).padEnd(9, " ") + String(l.pris).padEnd(9, " ") + String(l.soldeMois).padEnd(9, " ") + String(l.soldeCumule) + "\n";
+    });
+  }
+  const blob = new Blob([texte], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "archive-" + estimation.annee + "-nicolas.txt";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+function envoyerPeriodesParMail(periodes) {
+  const sujet = encodeURIComponent("Périodes sans RTT/CP possible");
+  const lignes = periodes.map(function(p) {
+    return "- " + formatDateFR(p.dateDebut) + " au " + formatDateFR(p.dateFin) + (p.label ? " (" + p.label + ")" : "");
+  });
+  const corps = encodeURIComponent(
+    periodes.length ? "Voici les périodes durant lesquelles il n'est pas possible de poser des RTT/CP :\n\n" + lignes.join("\n") : "Aucune période bloquée définie pour le moment."
+  );
+  window.location.href = "mailto:?subject=" + sujet + "&body=" + corps;
+}
+function depasseRTTConsecutifs(nouvelleDate, joursExistants, max) {
+  const set = {};
+  joursExistants.filter((j) => j.type === "RTT").forEach((j) => {
+    set[j.date] = true;
+  });
+  set[nouvelleDate] = true;
+  const dates = Object.keys(set).sort();
+  const idx = dates.indexOf(nouvelleDate);
+  let run = 1;
+  for (let i = idx - 1; i >= 0 && joursAdjacents(dates[i], dates[i + 1]); i--) run++;
+  for (let i = idx + 1; i < dates.length && joursAdjacents(dates[i - 1], dates[i]); i++) run++;
+  return run > max;
+}
+function exporterICS(joursPris) {
+  const pad = (n) => String(n).padStart(2, "0");
+  const toICSDate = (s) => s.replace(/-/g, "");
+  const nextDay = (s) => {
+    const d = parseISO(s);
+    d.setDate(d.getDate() + 1);
+    return toICSDate(toLocalISODate(d));
+  };
+  const now = /* @__PURE__ */ new Date();
+  const dtstamp = now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate()) + "T" + pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds()) + "Z";
+  let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//SuiviSalaireRTT//FR\r\nCALSCALE:GREGORIAN\r\n";
+  joursPris.forEach((j) => {
+    ics += "BEGIN:VEVENT\r\n";
+    ics += "UID:" + j.id + "@suivi-salaire-rtt\r\n";
+    ics += "DTSTAMP:" + dtstamp + "\r\n";
+    ics += "DTSTART;VALUE=DATE:" + toICSDate(j.date) + "\r\n";
+    ics += "DTEND;VALUE=DATE:" + nextDay(j.date) + "\r\n";
+    ics += "SUMMARY:" + j.type + (Number(j.duree) === 0.5 ? " (demi-journée)" : "") + (j.note ? " - " + j.note : "") + "\r\n";
+    ics += "END:VEVENT\r\n";
+  });
+  ics += "END:VCALENDAR\r\n";
+  const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "rtt-cp.ics";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+function exporterExcelRTTCP(joursPris) {
+  const lignes = [...joursPris].sort(function(a, b) {
+    return a.date.localeCompare(b.date);
+  }).map(function(j) {
+    return { Date: j.date, Type: j.type, "Durée (jours)": Number(j.duree), Note: j.note || "" };
+  });
+  const feuille = XLSX.utils.json_to_sheet(lignes);
+  feuille["!cols"] = [{ wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 32 }];
+  const classeur = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(classeur, feuille, "RTT-CP");
+  XLSX.writeFile(classeur, "rtt-cp-" + toLocalISODate(/* @__PURE__ */ new Date()) + ".xlsx");
+}
+function exporterJSON(state) {
+  const texte = JSON.stringify(state, null, 2);
+  const blob = new Blob([texte], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "suivi-salaire-" + toLocalISODate(/* @__PURE__ */ new Date()) + ".json";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+function mergerPersonnes(personnesDefaut, personnesSauvees) {
+  const parId = {};
+  (personnesSauvees || []).forEach(function(p) {
+    parId[p.id] = p;
+  });
+  return personnesDefaut.map(function(pDefaut) {
+    const pSauve = parId[pDefaut.id];
+    if (!pSauve) return pDefaut;
+    return { ...pDefaut, ...pSauve, entreesMensuelles: { ...pDefaut.entreesMensuelles, ...pSauve.entreesMensuelles || {} } };
+  });
+}
+function fusionnerEtat(base, source) {
+  return { ...base, ...source, config: { ...base.config, ...source.config || {} }, personnes: mergerPersonnes(base.personnes, source.personnes) };
+}
+const STORAGE_KEY = "suivi_salaire_data";
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return fusionnerEtat(DEFAULT_STATE, parsed);
+    }
+  } catch (e) {
+  }
+  return DEFAULT_STATE;
+}
+function saveState(nextState) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+const BINCONFIG_KEY = "suivi_salaire_jsonbin_config";
+function loadBinConfig() {
+  try {
+    const raw = localStorage.getItem(BINCONFIG_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+}
+function saveBinConfig(cfg) {
+  try {
+    if (cfg) localStorage.setItem(BINCONFIG_KEY, JSON.stringify(cfg));
+    else localStorage.removeItem(BINCONFIG_KEY);
+  } catch (e) {
+  }
+}
+const JSONBIN_BASE = "https://api.jsonbin.io/v3/b";
+async function jsonBinRead(cfg) {
+  const res = await fetch(JSONBIN_BASE + "/" + cfg.binId + "/latest", { headers: { "X-Master-Key": cfg.apiKey } });
+  if (!res.ok) throw new Error("read failed");
+  const data = await res.json();
+  return data.record;
+}
+async function jsonBinWrite(cfg, record) {
+  const res = await fetch(JSONBIN_BASE + "/" + cfg.binId, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", "X-Master-Key": cfg.apiKey },
+    body: JSON.stringify(record)
+  });
+  if (!res.ok) throw new Error("write failed");
+  return res.json();
+}
+async function jsonBinCreate(apiKey, record) {
+  const res = await fetch(JSONBIN_BASE, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Master-Key": apiKey, "X-Bin-Name": "suivi-salaire" },
+    body: JSON.stringify(record)
+  });
+  if (!res.ok) throw new Error("create failed");
+  const data = await res.json();
+  return data.metadata.id;
+}
+function TrashIcon({ size = 16, color = "currentColor" }) {
+  return /* @__PURE__ */ React.createElement("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: color, strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("polyline", { points: "3 6 5 6 21 6" }), /* @__PURE__ */ React.createElement("path", { d: "M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" }), /* @__PURE__ */ React.createElement("path", { d: "M10 11v6" }), /* @__PURE__ */ React.createElement("path", { d: "M14 11v6" }));
+}
+function EditIcon({ size = 16, color = "currentColor" }) {
+  return /* @__PURE__ */ React.createElement("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: color, strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("path", { d: "M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" }), /* @__PURE__ */ React.createElement("path", { d: "M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" }));
+}
+function MailIcon({ size = 14, color = "currentColor" }) {
+  return /* @__PURE__ */ React.createElement("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: color, strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("path", { d: "M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" }), /* @__PURE__ */ React.createElement("polyline", { points: "22 6 12 13 2 6" }));
+}
+function DownloadIcon({ size = 16, color = "currentColor" }) {
+  return /* @__PURE__ */ React.createElement("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: color, strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" }), /* @__PURE__ */ React.createElement("polyline", { points: "7 10 12 15 17 10" }), /* @__PURE__ */ React.createElement("line", { x1: "12", y1: "15", x2: "12", y2: "3" }));
+}
+function AlertIcon({ size = 13, color = "currentColor" }) {
+  return /* @__PURE__ */ React.createElement("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: color, strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("path", { d: "M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" }), /* @__PURE__ */ React.createElement("line", { x1: "12", y1: "9", x2: "12", y2: "13" }), /* @__PURE__ */ React.createElement("line", { x1: "12", y1: "17", x2: "12.01", y2: "17" }));
+}
+function Card({ children, className = "", dark = false, style = {} }) {
+  const base = dark ? { backgroundColor: COLORS.ink, color: "#fff" } : { backgroundColor: "#fff", color: COLORS.ink };
+  return /* @__PURE__ */ React.createElement("div", { className: "rounded-2xl border p-4 " + (dark ? "border-transparent" : "border-stone-200") + " " + className, style: { ...base, ...style } }, children);
+}
+function NumberField({ label, value, onChange, step = "0.01", suffix }) {
+  return /* @__PURE__ */ React.createElement("label", { className: "block" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs text-stone-500" }, label), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2 mt-1" }, /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      type: "number",
+      step,
+      value,
+      onChange: (e) => onChange(e.target.value === "" ? "" : Number(e.target.value)),
+      className: "font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-400"
+    }
+  ), suffix && /* @__PURE__ */ React.createElement("span", { className: "text-xs text-stone-400" }, suffix)));
+}
+function TextDateField({ label, value, onChange }) {
+  return /* @__PURE__ */ React.createElement("label", { className: "block" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs text-stone-500" }, label), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      type: "date",
+      value,
+      onChange: (e) => onChange(e.target.value),
+      className: "font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-stone-400"
+    }
+  ));
+}
+function Row({ children, index = 0 }) {
+  return /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between rounded-lg px-3 py-2 text-sm", style: { backgroundColor: index % 2 === 1 ? COLORS.stripe : "transparent" } }, children);
+}
+function Warning({ children }) {
+  return /* @__PURE__ */ React.createElement("p", { className: "col-span-2 text-xs rounded-lg px-3 py-2 flex items-center gap-1.5", style: { backgroundColor: COLORS.warnBg, color: COLORS.loss } }, /* @__PURE__ */ React.createElement(AlertIcon, { color: COLORS.loss }), " ", children);
+}
+function SyncPanel({ binConfig, onConnect, onDisconnect, onImport, currentState, onClose }) {
+  const [apiKey, setApiKey] = useState("");
+  const [binId, setBinId] = useState("");
+  const [mode, setMode] = useState("create");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
+  async function handleConnect(e) {
+    e.preventDefault();
+    if (!apiKey.trim()) {
+      setError("Clé API requise.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      if (mode === "create") {
+        const id = await jsonBinCreate(apiKey.trim(), currentState);
+        onConnect({ apiKey: apiKey.trim(), binId: id });
+      } else {
+        if (!binId.trim()) {
+          setError("Bin ID requis.");
+          setBusy(false);
+          return;
+        }
+        await jsonBinRead({ apiKey: apiKey.trim(), binId: binId.trim() });
+        onConnect({ apiKey: apiKey.trim(), binId: binId.trim() });
+      }
+      onClose();
+    } catch (err) {
+      setError("Connexion impossible. Vérifie ta clé API" + (mode === "existing" ? " et le Bin ID." : "."));
+    }
+    setBusy(false);
+  }
+  async function handleImport() {
+    setBusy(true);
+    setError("");
+    setInfo("");
+    try {
+      const record = await jsonBinRead(binConfig);
+      onImport(record);
+      setInfo("Données importées depuis JSONBin.");
+    } catch (err) {
+      setError("Import impossible.");
+    }
+    setBusy(false);
+  }
+  async function handleExport() {
+    setBusy(true);
+    setError("");
+    setInfo("");
+    try {
+      await jsonBinWrite(binConfig, currentState);
+      setInfo("Données exportées vers JSONBin.");
+    } catch (err) {
+      setError("Export impossible.");
+    }
+    setBusy(false);
+  }
+  if (binConfig) {
+    return /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium mb-1" }, "Synchronisation cloud active"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mb-3 font-mono" }, "Bin ID : ", binConfig.binId), /* @__PURE__ */ React.createElement("div", { className: "flex gap-2 mb-2" }, /* @__PURE__ */ React.createElement("button", { onClick: handleImport, disabled: busy, className: "flex-1 py-2 rounded-lg text-xs text-white disabled:opacity-50", style: { backgroundColor: COLORS.accent } }, "⬇️ Importer depuis JSONBin"), /* @__PURE__ */ React.createElement("button", { onClick: handleExport, disabled: busy, className: "flex-1 py-2 rounded-lg text-xs text-white disabled:opacity-50", style: { backgroundColor: COLORS.ink } }, "⬆️ Exporter vers JSONBin")), info && /* @__PURE__ */ React.createElement("p", { className: "text-xs mb-2", style: { color: COLORS.gain } }, info), error && /* @__PURE__ */ React.createElement("p", { className: "text-xs mb-2", style: { color: COLORS.loss } }, error), /* @__PURE__ */ React.createElement("div", { className: "flex gap-2" }, /* @__PURE__ */ React.createElement("button", { onClick: () => {
+      onDisconnect();
+      onClose();
+    }, className: "text-xs", style: { color: COLORS.loss } }, "Déconnecter"), /* @__PURE__ */ React.createElement("button", { onClick: onClose, className: "text-xs", style: { color: COLORS.accent } }, "Fermer")), /* @__PURE__ */ React.createElement("div", { className: "border-t mt-3 pt-3 space-y-2", style: { borderColor: COLORS.stripe } }, /* @__PURE__ */ React.createElement("button", { onClick: () => exporterJSON(currentState), className: "w-full py-2 rounded-lg text-xs", style: { backgroundColor: COLORS.stripe, color: COLORS.ink } }, "📥 Télécharger une sauvegarde JSON (local)"), /* @__PURE__ */ React.createElement("input", { type: "file", accept: ".json,application/json", id: "import-json-local-1", className: "hidden", onChange: (ev) => {
+      const file = ev.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          onImport(JSON.parse(e.target.result));
+        } catch (err) {
+          alert("Fichier JSON invalide.");
+        }
+      };
+      reader.readAsText(file);
+      ev.target.value = "";
+    } }), /* @__PURE__ */ React.createElement("label", { htmlFor: "import-json-local-1", className: "w-full py-2 rounded-lg text-xs block text-center cursor-pointer border", style: { borderColor: COLORS.stripe, color: COLORS.ink } }, "📤 Importer une sauvegarde JSON (local)")));
+  }
+  return /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium mb-1" }, "Synchroniser entre appareils (JSONBin)"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mb-3" }, "Optionnel — tes données restent aussi enregistrées localement."), /* @__PURE__ */ React.createElement("div", { className: "flex gap-2 mb-3" }, /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      type: "button",
+      onClick: () => setMode("create"),
+      className: "flex-1 py-2 rounded-lg text-sm",
+      style: { backgroundColor: mode === "create" ? COLORS.ink : COLORS.stripe, color: mode === "create" ? "#fff" : COLORS.ink }
+    },
+    "Créer un bin"
+  ), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      type: "button",
+      onClick: () => setMode("existing"),
+      className: "flex-1 py-2 rounded-lg text-sm",
+      style: { backgroundColor: mode === "existing" ? COLORS.ink : COLORS.stripe, color: mode === "existing" ? "#fff" : COLORS.ink }
+    },
+    "J'ai déjà un bin"
+  )), /* @__PURE__ */ React.createElement("form", { onSubmit: handleConnect, className: "space-y-3" }, /* @__PURE__ */ React.createElement("label", { className: "block" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs text-stone-500" }, "Clé API JSONBin (X-Master-Key)"), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      type: "password",
+      value: apiKey,
+      onChange: (e) => setApiKey(e.target.value),
+      className: "font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1"
+    }
+  )), mode === "existing" && /* @__PURE__ */ React.createElement("label", { className: "block" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs text-stone-500" }, "Bin ID"), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      type: "text",
+      value: binId,
+      onChange: (e) => setBinId(e.target.value),
+      className: "font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1"
+    }
+  )), error && /* @__PURE__ */ React.createElement("p", { className: "text-xs", style: { color: COLORS.loss } }, error), /* @__PURE__ */ React.createElement("div", { className: "flex gap-2" }, /* @__PURE__ */ React.createElement("button", { type: "submit", disabled: busy, className: "flex-1 text-white rounded-lg py-2 text-sm font-medium disabled:opacity-50", style: { backgroundColor: COLORS.ink } }, busy ? "Connexion…" : mode === "create" ? "Créer et connecter" : "Connecter"), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: onClose, className: "px-4 rounded-lg text-sm", style: { backgroundColor: COLORS.stripe, color: COLORS.ink } }, "Annuler"))), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mt-3" }, "Pas de compte ? Crée-en un gratuitement sur jsonbin.io, copie ta X-Master-Key depuis ton tableau de bord."), /* @__PURE__ */ React.createElement("div", { className: "border-t mt-3 pt-3 space-y-2", style: { borderColor: COLORS.stripe } }, /* @__PURE__ */ React.createElement("button", { onClick: () => exporterJSON(currentState), className: "w-full py-2 rounded-lg text-xs", style: { backgroundColor: COLORS.stripe, color: COLORS.ink } }, "📥 Télécharger une sauvegarde JSON (local)"), /* @__PURE__ */ React.createElement("input", { type: "file", accept: ".json,application/json", id: "import-json-local-2", className: "hidden", onChange: (ev) => {
+    const file = ev.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        onImport(JSON.parse(e.target.result));
+      } catch (err) {
+        alert("Fichier JSON invalide.");
+      }
+    };
+    reader.readAsText(file);
+    ev.target.value = "";
+  } }), /* @__PURE__ */ React.createElement("label", { htmlFor: "import-json-local-2", className: "w-full py-2 rounded-lg text-xs block text-center cursor-pointer border", style: { borderColor: COLORS.stripe, color: COLORS.ink } }, "📤 Importer une sauvegarde JSON (local)")));
+}
+function App() {
+  const [state, setState] = useState(loadState);
+  const [binConfig, setBinConfigState] = useState(loadBinConfig);
+  const [showSync, setShowSync] = useState(false);
+  const [syncStatus, setSyncStatus] = useState("idle");
+  const [tab, setTab] = useState("dashboard");
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [saving, setSaving] = useState(false);
+  useEffect(function() {
+    if (!binConfig) return;
+    setSyncStatus("syncing");
+    (async function() {
+      try {
+        const record = await jsonBinRead(binConfig);
+        const merged = fusionnerEtat(DEFAULT_STATE, record);
+        setState(merged);
+        saveState(merged);
+        setSyncStatus("synced");
+      } catch (e) {
+        setSyncStatus("error");
+      }
+    })();
+  }, []);
+  function persist(nextState) {
+    setState(nextState);
+    setSaving(true);
+    saveState(nextState);
+    if (binConfig) {
+      setSyncStatus("syncing");
+      jsonBinWrite(binConfig, nextState).then(() => setSyncStatus("synced")).catch(() => setSyncStatus("error"));
+    }
+    setTimeout(() => setSaving(false), 400);
+  }
+  function connecterSync(cfg) {
+    setBinConfigState(cfg);
+    saveBinConfig(cfg);
+    setSyncStatus("synced");
+  }
+  function deconnecterSync() {
+    setBinConfigState(null);
+    saveBinConfig(null);
+    setSyncStatus("idle");
+  }
+  function appliquerImport(record) {
+    const merged = fusionnerEtat(DEFAULT_STATE, record);
+    setState(merged);
+    saveState(merged);
+  }
+  function updateConfig(patch) {
+    persist({ ...state, config: { ...state.config, ...patch } });
+  }
+  function updatePersonnes(next) {
+    persist({ ...state, personnes: next });
+  }
+  function ajouterJour(j) {
+    const next = [...state.joursPris, { id: uid(), ...j }].sort((a, b) => a.date.localeCompare(b.date));
+    persist({ ...state, joursPris: next });
+  }
+  function supprimerJour(id) {
+    persist({ ...state, joursPris: state.joursPris.filter((j) => j.id !== id) });
+  }
+  function modifierJour(id, patch) {
+    const next = state.joursPris.map(function(j) {
+      return j.id === id ? { ...j, ...patch } : j;
+    }).sort((a, b) => a.date.localeCompare(b.date));
+    persist({ ...state, joursPris: next });
+  }
+  function ajouterJoursPlage(dates, type, duree, note) {
+    const existants = {};
+    state.joursPris.forEach(function(j) {
+      existants[j.date + "|" + j.type] = true;
+    });
+    const nouveaux = dates.filter(function(d) {
+      return !existants[d + "|" + type];
+    }).map(function(d) {
+      return { id: uid(), date: d, type, duree, note };
+    });
+    if (!nouveaux.length) return;
+    const next = [...state.joursPris, ...nouveaux].sort((a, b) => a.date.localeCompare(b.date));
+    persist({ ...state, joursPris: next });
+  }
+  function ajouterPeriode(per) {
+    const next = [...state.periodesBloquees, { id: uid(), ...per }].sort((a, b) => a.dateDebut.localeCompare(b.dateDebut));
+    persist({ ...state, periodesBloquees: next });
+  }
+  function supprimerPeriode(id) {
+    persist({ ...state, periodesBloquees: state.periodesBloquees.filter((p) => p.id !== id) });
+  }
+  function modifierPeriode(id, patch) {
+    const next = state.periodesBloquees.map(function(p) {
+      return p.id === id ? { ...p, ...patch } : p;
+    }).sort((a, b) => a.dateDebut.localeCompare(b.dateDebut));
+    persist({ ...state, periodesBloquees: next });
+  }
+  function ajouterPersonne() {
+    updatePersonnes([...state.personnes, { id: uid(), nom: "", dateEntree: "", entreesMensuelles: {} }]);
+  }
+  function supprimerPersonne(id) {
+    if (id === "nicolas") return;
+    updatePersonnes(state.personnes.filter((p) => p.id !== id));
+  }
+  function updatePersonneChamp(id, patch) {
+    updatePersonnes(state.personnes.map((p) => p.id === id ? { ...p, ...patch } : p));
+  }
+  function ajouterArchive(estimation) {
+    const sansAncienne = state.archives.filter(function(a) {
+      return a.annee !== estimation.annee;
+    });
+    const joursPrisAnnee = state.joursPris.filter(function(j) {
+      return j.date.slice(0, 4) === String(estimation.annee);
+    });
+    const next = [...sansAncienne, { annee: estimation.annee, dateArchivage: toLocalISODate(/* @__PURE__ */ new Date()), estimation, joursPris: joursPrisAnnee, config: state.config }].sort((a, b) => b.annee - a.annee);
+    persist({ ...state, archives: next });
+  }
+  function supprimerArchive(annee) {
+    persist({ ...state, archives: state.archives.filter(function(a) {
+      return a.annee !== annee;
+    }) });
+  }
+  function ajouterArchiveSalaires(annee, personneId) {
+    const personneCible = state.personnes.filter(function(p) {
+      return p.id === personneId;
+    })[0];
+    if (!personneCible) return;
+    const anneeStr = String(annee);
+    const entreesAnnee = {};
+    Object.keys(personneCible.entreesMensuelles || {}).forEach(function(k) {
+      if (k.slice(0, 4) === anneeStr) entreesAnnee[k] = personneCible.entreesMensuelles[k];
+    });
+    let totNetPaye = 0, totNetFiscal = 0, totPs = 0, totSalaire = 0;
+    Object.keys(entreesAnnee).forEach(function(k) {
+      const e = entreesAnnee[k];
+      totNetPaye += Number(e.netPaye) || 0;
+      totNetFiscal += Number(e.netFiscal) || 0;
+      totPs += Number(e.ps) || 0;
+      totSalaire += Number(e.salaire) || 0;
+    });
+    const sansAncienne = state.archivesSalaires.filter(function(a) {
+      return !(a.annee === annee && a.personneId === personneId);
+    });
+    const next = [...sansAncienne, {
+      id: uid(),
+      annee,
+      personneId,
+      personneNom: personneCible.nom,
+      dateArchivage: toLocalISODate(/* @__PURE__ */ new Date()),
+      entreesMensuelles: entreesAnnee,
+      totaux: { netPaye: round2(totNetPaye), netFiscal: round2(totNetFiscal), ps: round2(totPs), salaire: round2(totSalaire) }
+    }].sort(function(a, b) {
+      return b.annee - a.annee || (a.personneNom || "").localeCompare(b.personneNom || "");
+    });
+    persist({ ...state, archivesSalaires: next });
+  }
+  function supprimerArchiveSalaires(id) {
+    persist({ ...state, archivesSalaires: state.archivesSalaires.filter(function(a) {
+      return a.id !== id;
+    }) });
+  }
+  function ajouterArchivePrimes(annee, estimationPrimes) {
+    const sansAncienne = state.archivesPrimes.filter(function(a) {
+      return a.annee !== annee;
+    });
+    const next = [...sansAncienne, {
+      id: uid(),
+      annee,
+      dateArchivage: toLocalISODate(/* @__PURE__ */ new Date()),
+      primeVacances: estimationPrimes.primeVacances,
+      primeVacancesNetPaye: estimationPrimes.primeVacancesNetPaye,
+      primeVacancesNetFiscal: estimationPrimes.primeVacancesNetFiscal,
+      primeNoel: estimationPrimes.primeNoel,
+      primeNoelNetPaye: estimationPrimes.primeNoelNetPaye,
+      primeNoelNetFiscal: estimationPrimes.primeNoelNetFiscal,
+      moisPrimeVacances: state.config.moisPrimeVacances,
+      moisPrimeNoel: state.config.moisPrimeNoel
+    }].sort(function(a, b) {
+      return b.annee - a.annee;
+    });
+    persist({ ...state, archivesPrimes: next });
+  }
+  function supprimerArchivePrimes(id) {
+    persist({ ...state, archivesPrimes: state.archivesPrimes.filter(function(a) {
+      return a.id !== id;
+    }) });
+  }
+  function ajouterArchiveConges(annee) {
+    const anneeStr = String(annee);
+    const joursAnnee = state.joursPris.filter(function(j) {
+      return j.date.slice(0, 4) === anneeStr;
+    });
+    const rttPrisAnnee = round2(joursAnnee.filter(function(j) {
+      return j.type === "RTT";
+    }).reduce(function(s, j) {
+      return s + Number(j.duree);
+    }, 0));
+    const cpPrisAnnee = round2(joursAnnee.filter(function(j) {
+      return j.type === "CP";
+    }).reduce(function(s, j) {
+      return s + Number(j.duree);
+    }, 0));
+    const sansAncienne = state.archivesConges.filter(function(a) {
+      return a.annee !== annee;
+    });
+    const next = [...sansAncienne, {
+      id: uid(),
+      annee,
+      dateArchivage: toLocalISODate(/* @__PURE__ */ new Date()),
+      joursPris: joursAnnee,
+      rttPris: rttPrisAnnee,
+      cpPris: cpPrisAnnee,
+      soldeRTT: conges.soldeRTT,
+      soldeCP: conges.soldeCP
+    }].sort(function(a, b) {
+      return b.annee - a.annee;
+    });
+    persist({ ...state, archivesConges: next });
+  }
+  function supprimerArchiveConges(id) {
+    persist({ ...state, archivesConges: state.archivesConges.filter(function(a) {
+      return a.id !== id;
+    }) });
+  }
+  function reinitialiser() {
+    if (!confirmReset) {
+      setConfirmReset(true);
+      setTimeout(() => setConfirmReset(false), 3e3);
+      return;
+    }
+    setConfirmReset(false);
+    persist(DEFAULT_STATE);
+  }
+  const today = useMemo(() => /* @__PURE__ */ new Date(), []);
+  const nicolas = state.personnes.filter((p) => p.id === "nicolas")[0] || state.personnes[0];
+  const anneesNicolas = nicolas && nicolas.dateEntree ? anneesEcoulees(parseISO(nicolas.dateEntree), today) : 0;
+  const bonusCP = bonusAncienneteJours(anneesNicolas);
+  const debutRTT = new Date(today.getFullYear(), 0, 1);
+  const rttAcquis = round2(Number(state.config.rttBaseAnnuel));
+  const rttPris = state.joursPris.filter((j) => j.type === "RTT" && j.date >= toLocalISODate(debutRTT)).reduce((s, j) => s + Number(j.duree), 0);
+  const soldeRTT = round2(rttAcquis - rttPris);
+  const debutCycleCP = debutCycle(state.config.cpCycleDebut, today);
+  const cpAcquisFixe = round2(Number(state.config.cpBaseAnnuel) + bonusCP);
+  const cpPris = state.joursPris.filter((j) => j.type === "CP" && j.date >= toLocalISODate(debutCycleCP)).reduce((s, j) => s + Number(j.duree), 0);
+  const soldeCP = round2(cpAcquisFixe - cpPris);
+  const cpEnCours = round2(Number(state.config.cpBaseAnnuel));
+  const conges = { soldeRTT, soldeCP, rttAcquis, rttPris, cpAcquisFixe, cpPris, cpEnCours, debutCycleCP };
+  function primeMontant(pct, mois, annee) {
+    if (!nicolas) return null;
+    const estimation = estimerAnnee(nicolas, annee, state.joursPris || [], state.config);
+    const moisData = estimation.moisDetail[mois - 1];
+    const s = moisData ? moisData.salaireBase : null;
+    if (!s) return null;
+    return round2(Number(s) * pct / 100);
+  }
+  const anneeActuelle = today.getFullYear();
+  const prochaines = useMemo(function() {
+    const items = [];
+    [anneeActuelle, anneeActuelle + 1].forEach(function(an) {
+      items.push({ date: new Date(an, state.config.moisPrimeVacances - 1, 1), label: "Prime de vacances (brut)", montant: primeMontant(state.config.primeVacancesPct, state.config.moisPrimeVacances, an) });
+      items.push({ date: new Date(an, state.config.moisPrimeNoel - 1, 1), label: "Prime de Noël (brut)", montant: primeMontant(state.config.primeNoelPct, state.config.moisPrimeNoel, an) });
+    });
+    const debutMois = new Date(today.getFullYear(), today.getMonth(), 1);
+    return items.filter((i) => i.date >= debutMois).sort((a, b) => a.date - b.date).slice(0, 3);
+  }, [state.config, state.personnes, anneeActuelle]);
+  const dernierSalaire = useMemo(function() {
+    const src = nicolas && nicolas.entreesMensuelles ? nicolas.entreesMensuelles : {};
+    const entries = Object.keys(src).filter(function(k) {
+      return src[k] && src[k].salaire;
+    }).sort();
+    if (!entries.length) return null;
+    const key = entries[entries.length - 1];
+    return [key, src[key]];
+  }, [nicolas]);
+  const tabs = [
+    { id: "dashboard", label: "Accueil" },
+    { id: "salaires", label: "Salaires" },
+    { id: "estimation", label: "Estimation" },
+    { id: "primes", label: "Primes" },
+    { id: "impots", label: "Impôts" },
+    { id: "conges", label: "RTT & CP" }
+  ];
+  return /* @__PURE__ */ React.createElement("div", { className: "min-h-screen pb-24", style: { backgroundColor: COLORS.paper, color: COLORS.ink } }, /* @__PURE__ */ React.createElement("header", { className: "px-5 pt-6 pb-5", style: { backgroundColor: COLORS.ink, color: "#fff" } }, /* @__PURE__ */ React.createElement("div", { className: "flex items-start justify-between" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-start gap-3" }, /* @__PURE__ */ React.createElement("div", { className: "rounded-xl p-2 shrink-0 flex items-center justify-center", style: { backgroundColor: "#2A3A34", width: 36, height: 36 } }, /* @__PURE__ */ React.createElement("span", { style: { color: COLORS.gain, fontSize: 18, fontWeight: 600 } }, "€")), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "text-xs uppercase tracking-widest", style: { color: "#8FA69B" } }, "Suivi personnel"), /* @__PURE__ */ React.createElement("h1", { className: "font-display text-2xl mt-1", style: { fontWeight: 600 } }, "Salaire, RTT & Congés"), /* @__PURE__ */ React.createElement("p", { className: "text-sm mt-1", style: { color: "#B7C4BC" } }, "Nicolas Jutge — Conseiller Assurance Réseau, Classe 3"))), /* @__PURE__ */ React.createElement("div", { className: "flex flex-col items-end gap-1.5 shrink-0" }, /* @__PURE__ */ React.createElement("button", { onClick: () => setShowSync(!showSync), className: "text-xs", style: { color: "#8FA69B" } }, binConfig ? syncStatus === "error" ? "sync ⚠" : "sync ✓" : "synchroniser"), /* @__PURE__ */ React.createElement("button", { onClick: reinitialiser, className: "text-xs", style: { color: "#8FA69B" } }, confirmReset ? "confirmer ?" : "réinitialiser")))), /* @__PURE__ */ React.createElement("div", { className: "px-4 pt-3" }, /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, binConfig ? "Synchronisé avec ton bin JSONBin (+ copie locale sur cet appareil)." : "Données enregistrées localement sur cet appareil et ce navigateur."), showSync && /* @__PURE__ */ React.createElement("div", { className: "mt-2" }, /* @__PURE__ */ React.createElement(SyncPanel, { binConfig, onConnect: connecterSync, onDisconnect: deconnecterSync, onImport: appliquerImport, currentState: state, onClose: () => setShowSync(false) }))), /* @__PURE__ */ React.createElement("main", { className: "px-4 pt-5 max-w-xl mx-auto" }, tab === "dashboard" && /* @__PURE__ */ React.createElement(Dashboard, { dernierSalaire, soldeRTT, soldeCP, prochaines, today, config: state.config }), tab === "salaires" && /* @__PURE__ */ React.createElement(
+    SalairesTab,
+    {
+      personnes: state.personnes,
+      updatePersonnes,
+      config: state.config,
+      updateConfig,
+      joursPris: state.joursPris || [],
+      archivesSalaires: state.archivesSalaires || [],
+      ajouterArchiveSalaires,
+      supprimerArchiveSalaires
+    }
+  ), tab === "estimation" && /* @__PURE__ */ React.createElement(
+    EstimationTab,
+    {
+      nicolas,
+      joursPris: state.joursPris || [],
+      config: state.config,
+      updateConfig,
+      archives: state.archives || [],
+      ajouterArchive,
+      supprimerArchive,
+      anneeActuelle,
+      primeMontant
+    }
+  ), tab === "primes" && /* @__PURE__ */ React.createElement(
+    PrimesTab,
+    {
+      config: state.config,
+      updateConfig,
+      anneeActuelle,
+      primeMontant,
+      nicolas: state.personnes[0],
+      joursPris: state.joursPris,
+      archivesPrimes: state.archivesPrimes || [],
+      ajouterArchivePrimes,
+      supprimerArchivePrimes
+    }
+  ), tab === "impots" && /* @__PURE__ */ React.createElement(
+    ImpotsTab,
+    {
+      personnes: state.personnes,
+      updatePersonneChamp,
+      config: state.config,
+      updateConfig,
+      joursPris: state.joursPris || [],
+      anneeActuelle
+    }
+  ), tab === "conges" && /* @__PURE__ */ React.createElement(
+    CongesTab,
+    {
+      config: state.config,
+      updateConfig,
+      joursPris: state.joursPris,
+      ajouterJoursPlage,
+      modifierJour,
+      supprimerJour,
+      periodesBloquees: state.periodesBloquees,
+      ajouterPeriode,
+      modifierPeriode,
+      supprimerPeriode,
+      personnes: state.personnes,
+      ajouterPersonne,
+      supprimerPersonne,
+      updatePersonne: updatePersonneChamp,
+      conges,
+      today,
+      archivesConges: state.archivesConges || [],
+      ajouterArchiveConges,
+      supprimerArchiveConges
+    }
+  )), /* @__PURE__ */ React.createElement("nav", { className: "fixed bottom-0 left-0 right-0 bg-white border-t border-stone-200" }, /* @__PURE__ */ React.createElement("div", { className: "max-w-xl mx-auto grid grid-cols-6" }, tabs.map(function(t) {
+    return /* @__PURE__ */ React.createElement("button", { key: t.id, onClick: () => setTab(t.id), className: "py-3 text-xs font-medium", style: { color: tab === t.id ? COLORS.ink : "#A8A29E" } }, t.label);
+  }))), saving && /* @__PURE__ */ React.createElement("div", { className: "fixed top-4 right-4 text-white text-xs px-3 py-1.5 rounded-full shadow-lg", style: { backgroundColor: COLORS.ink } }, "Enregistrement…"));
+}
+function Dashboard({ dernierSalaire, soldeRTT, soldeCP, prochaines, today, config }) {
+  const rappelDeclenche = config && config.rappelBaremeDate ? today >= parseISO(config.rappelBaremeDate) : false;
+  return /* @__PURE__ */ React.createElement("div", { className: "space-y-4" }, rappelDeclenche && /* @__PURE__ */ React.createElement(Warning, null, "📅 Il est temps de vérifier si le barème de l'impôt a été mis à jour (nouvelle loi de finances) — ", /* @__PURE__ */ React.createElement("a", { href: "https://www.service-public.gouv.fr/particuliers/vosdroits/F1419?lang=fr", target: "_blank", rel: "noopener noreferrer", style: { color: COLORS.loss, textDecoration: "underline" } }, "vérifier"), ". Réglages dans l'onglet Impôts."), /* @__PURE__ */ React.createElement(Card, { dark: true }, /* @__PURE__ */ React.createElement("p", { className: "text-xs uppercase tracking-wide", style: { color: "#8FA69B" } }, "Dernier salaire renseigné (Nicolas)"), dernierSalaire ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("p", { className: "font-display font-mono text-3xl mt-1" }, formatEUR(dernierSalaire[1].salaire)), /* @__PURE__ */ React.createElement("p", { className: "text-xs mt-2", style: { color: "#8FA69B" } }, formatMoisAnnee(dernierSalaire[0]))) : /* @__PURE__ */ React.createElement("p", { className: "text-sm mt-2", style: { color: "#8FA69B" } }, "Renseigne un salaire dans l'onglet Salaires.")), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-3" }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-500" }, "Solde RTT"), /* @__PURE__ */ React.createElement("p", { className: "font-mono text-2xl mt-1" }, formatJours(soldeRTT)), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, "jours")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-500" }, "Solde CP"), /* @__PURE__ */ React.createElement("p", { className: "font-mono text-2xl mt-1" }, formatJours(soldeCP)), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, "jours"))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium mb-3" }, "Prochaines échéances"), /* @__PURE__ */ React.createElement("div", { className: "space-y-1" }, prochaines.map(function(p, i) {
+    return /* @__PURE__ */ React.createElement(Row, { key: i, index: i }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "text-stone-800" }, p.label), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, formatDateFR(toLocalISODate(p.date)))), /* @__PURE__ */ React.createElement("p", { className: "font-mono font-medium", style: { color: COLORS.gain } }, p.montant != null ? formatEUR(p.montant) : "à renseigner"));
+  }))));
+}
+function SalairesTab({ personnes, updatePersonnes, config, updateConfig, joursPris, archivesSalaires, ajouterArchiveSalaires, supprimerArchiveSalaires }) {
+  const [personneId, setPersonneId] = useState(personnes[0].id);
+  const [annee, setAnnee] = useState((/* @__PURE__ */ new Date()).getFullYear());
+  const [archiveOuverte, setArchiveOuverte] = useState(null);
+  const personne = personnes.filter((p) => p.id === personneId)[0] || personnes[0];
+  const archivesPersonne = archivesSalaires.filter(function(a) {
+    return a.personneId === personneId;
+  });
+  const archiveExistante = archivesPersonne.filter(function(a) {
+    return a.annee === annee;
+  })[0];
+  function updateMois(mois, champ, valeur) {
+    const key = annee + "-" + String(mois).padStart(2, "0");
+    const next = personnes.map(function(p) {
+      if (p.id !== personneId) return p;
+      const entreesMensuelles = { ...p.entreesMensuelles };
+      entreesMensuelles[key] = { ...entreesMensuelles[key] || {} };
+      entreesMensuelles[key][champ] = valeur;
+      return { ...p, entreesMensuelles };
+    });
+    updatePersonnes(next);
+  }
+  function updateInteressement(champ, valeur) {
+    const next = personnes.map(function(p) {
+      if (p.id !== "nicolas") return p;
+      const parAnnee = { ...p.interessementParAnnee || {} };
+      parAnnee[annee] = { ...parAnnee[annee] || {} };
+      parAnnee[annee][champ] = valeur;
+      return { ...p, interessementParAnnee: parAnnee };
+    });
+    updatePersonnes(next);
+  }
+  const estimationNicolas = personneId === "nicolas" ? appliquerPrimes(estimerAnnee(personne, annee, joursPris, config), config) : null;
+  const totaux = { netPaye: 0, salaire: 0, netFiscal: 0, ps: 0, interessement: 0 };
+  if (estimationNicolas) {
+    estimationNicolas.moisDetail.forEach(function(m) {
+      totaux.netPaye += Number(m.netEstime) || 0;
+      totaux.salaire += Number(m.salaireBase) || 0;
+      totaux.netFiscal += Number(m.netFiscalEstime) || 0;
+      totaux.ps += Number(m.pasEstime) || 0;
+      totaux.interessement += Number(m.interessement) || 0;
+    });
+  } else {
+    for (let m = 1; m <= 12; m++) {
+      const key = annee + "-" + String(m).padStart(2, "0");
+      const e = personne.entreesMensuelles[key];
+      if (e) {
+        totaux.netPaye += Number(e.netPaye) || 0;
+        totaux.salaire += Number(e.salaire) || 0;
+        totaux.netFiscal += Number(e.netFiscal) || 0;
+        totaux.ps += Number(e.ps) || 0;
+        totaux.interessement += Number(e.interessement) || 0;
+      }
+    }
+  }
+  return /* @__PURE__ */ React.createElement("div", { className: "space-y-4" }, /* @__PURE__ */ React.createElement("div", { className: "flex gap-2 overflow-x-auto pb-1" }, personnes.map(function(p) {
+    return /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        key: p.id,
+        onClick: () => setPersonneId(p.id),
+        className: "px-3 py-1.5 rounded-full text-sm whitespace-nowrap",
+        style: { backgroundColor: personneId === p.id ? COLORS.ink : COLORS.stripe, color: personneId === p.id ? "#fff" : COLORS.ink }
+      },
+      p.nom || "(sans nom)",
+      p.id === "nicolas" ? " 👤" : ""
+    );
+  })), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between mb-3" }, /* @__PURE__ */ React.createElement("button", { onClick: () => setAnnee(annee - 1), className: "px-3 py-1 text-sm rounded-lg", style: { backgroundColor: COLORS.stripe } }, "◀"), /* @__PURE__ */ React.createElement("p", { className: "font-display text-lg" }, annee), /* @__PURE__ */ React.createElement("button", { onClick: () => setAnnee(annee + 1), className: "px-3 py-1 text-sm rounded-lg", style: { backgroundColor: COLORS.stripe } }, "▶")), personneId === "nicolas" && /* @__PURE__ */ React.createElement("div", { className: "text-xs text-stone-400 mb-2 space-y-1" }, /* @__PURE__ */ React.createElement("p", null, "Champs vides = valeur estimée automatiquement (filigrane). Saisis le bulletin réel pour la remplacer."), /* @__PURE__ */ React.createElement("p", null, "🎁 Intéressement (juillet, Nicolas uniquement) et 📈 Augmentation générale (janvier) se saisissent en fin de tableau, après décembre."), /* @__PURE__ */ React.createElement("p", null, "⚠️ Si le salaire a changé depuis 07/2026, saisis directement la nouvelle valeur dans la colonne ", /* @__PURE__ */ React.createElement("b", null, "Salaire"), " du mois concerné.")), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-4 gap-1 text-xs text-stone-500 mb-1 px-1" }, /* @__PURE__ */ React.createElement("span", null, "Mois"), /* @__PURE__ */ React.createElement("span", null, "💶 Net payé"), /* @__PURE__ */ React.createElement("span", null, "🧾 N.fiscal"), /* @__PURE__ */ React.createElement("span", null, "📉 PAS")), /* @__PURE__ */ React.createElement("div", { className: "space-y-1" }, MOIS_FR.map(function(m, i) {
+    const mois = i + 1;
+    const key = annee + "-" + String(mois).padStart(2, "0");
+    const e = personne.entreesMensuelles[key] || {};
+    const estMois = estimationNicolas ? estimationNicolas.moisDetail[i] : null;
+    return /* @__PURE__ */ React.createElement("div", { key: mois, className: "rounded-lg px-1 py-1", style: { backgroundColor: i % 2 === 1 ? COLORS.stripe : "transparent" } }, /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-4 gap-1 items-center" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs font-mono capitalize" }, m.slice(0, 3)), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "number",
+        step: "0.01",
+        value: e.netPaye === void 0 ? "" : e.netPaye,
+        placeholder: estMois ? formatJours(estMois.netEstime) : "—",
+        onChange: (ev) => updateMois(mois, "netPaye", ev.target.value === "" ? "" : Number(ev.target.value)),
+        className: "font-mono w-full border rounded px-1 py-1 text-xs",
+        style: { borderColor: COLORS.accent, backgroundColor: "#EAF0F5" }
+      }
+    ), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "number",
+        step: "0.01",
+        value: e.netFiscal === void 0 ? "" : e.netFiscal,
+        placeholder: estMois ? formatJours(estMois.netFiscalEstime) : "—",
+        onChange: (ev) => updateMois(mois, "netFiscal", ev.target.value === "" ? "" : Number(ev.target.value)),
+        className: "font-mono w-full border border-stone-300 rounded px-1 py-1 text-xs"
+      }
+    ), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "number",
+        step: "0.01",
+        value: e.ps === void 0 ? "" : e.ps,
+        placeholder: estMois ? formatJours(estMois.pasEstime) : "—",
+        onChange: (ev) => updateMois(mois, "ps", ev.target.value === "" ? "" : Number(ev.target.value)),
+        className: "font-mono w-full border border-stone-300 rounded px-1 py-1 text-xs"
+      }
+    )), mois === 1 && personneId === "nicolas" && Number(e.augmentationPct) > 0 && /* @__PURE__ */ React.createElement("p", { className: "text-xs mt-1 mx-1", style: { color: COLORS.accent } }, "📈 Augmentation générale : +", e.augmentationPct, "%"));
+  })), personneId === "nicolas" && /* @__PURE__ */ React.createElement("div", { className: "mt-2 pt-2 border-t border-stone-200 px-1 space-y-2" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs flex-1" }, "📈 Augmentation générale (janvier)"), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      type: "number",
+      step: "0.1",
+      value: (personne.entreesMensuelles[annee + "-01"] || {}).augmentationPct === void 0 ? "" : (personne.entreesMensuelles[annee + "-01"] || {}).augmentationPct,
+      placeholder: "—",
+      title: "Augmentation générale en %, appliquée au salaire de base à partir de janvier et propagée aux mois suivants estimés.",
+      onChange: (ev) => updateMois(1, "augmentationPct", ev.target.value === "" ? "" : Number(ev.target.value)),
+      className: "font-mono w-full border border-stone-300 rounded px-1 py-1 text-xs text-right",
+      style: { maxWidth: "4rem" }
+    }
+  ), /* @__PURE__ */ React.createElement("span", { className: "text-xs text-stone-500" }, "%")), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs flex-1" }, "🎁 Intéressement — Net payé (juillet)"), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      type: "number",
+      step: "0.01",
+      value: ((personne.interessementParAnnee || {})[annee] || {}).netPaye === void 0 ? "" : (personne.interessementParAnnee[annee] || {}).netPaye,
+      placeholder: "—",
+      title: "Intéressement/participation — montant net payé, indépendant du salaire de juillet, versé une fois par an en juillet.",
+      onChange: (ev) => updateInteressement("netPaye", ev.target.value === "" ? "" : Number(ev.target.value)),
+      className: "font-mono w-full border border-stone-300 rounded px-1 py-1 text-xs text-right",
+      style: { maxWidth: "5rem" }
+    }
+  ), /* @__PURE__ */ React.createElement("span", { className: "text-xs text-stone-500" }, "€")), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs flex-1" }, "🎁 Intéressement — Net fiscal (juillet)"), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      type: "number",
+      step: "0.01",
+      value: ((personne.interessementParAnnee || {})[annee] || {}).netFiscal === void 0 ? "" : (personne.interessementParAnnee[annee] || {}).netFiscal,
+      placeholder: "—",
+      title: "Intéressement/participation — montant net fiscal, indépendant du salaire de juillet, versé une fois par an en juillet.",
+      onChange: (ev) => updateInteressement("netFiscal", ev.target.value === "" ? "" : Number(ev.target.value)),
+      className: "font-mono w-full border border-stone-300 rounded px-1 py-1 text-xs text-right",
+      style: { maxWidth: "5rem" }
+    }
+  ), /* @__PURE__ */ React.createElement("span", { className: "text-xs text-stone-500" }, "€")), estimationNicolas && /* @__PURE__ */ React.createElement("p", { className: "text-xs", style: { color: COLORS.gold } }, Number(((personne.interessementParAnnee || {})[annee] || {}).netPaye) > 0 || Number(((personne.interessementParAnnee || {})[annee] || {}).netFiscal) > 0 ? "🎁 Intégré en juillet, indépendamment du salaire : Net fiscal " + formatEUR(estimationNicolas.moisDetail[6].netFiscalEstime) + " · Net payé " + formatEUR(estimationNicolas.moisDetail[6].netEstime) + " — déjà inclus dans le Total ci-dessous." : "Aucune valeur saisie → 0 €, aucun impact sur le Total.")), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-4 gap-1 items-center mt-2 pt-2 border-t border-stone-200 px-1" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs font-semibold" }, "Total"), /* @__PURE__ */ React.createElement("span", { className: "font-mono text-xs font-semibold text-right whitespace-nowrap overflow-hidden", style: { color: COLORS.accent } }, formatEUR(totaux.netPaye)), /* @__PURE__ */ React.createElement("span", { className: "font-mono text-xs font-semibold text-right whitespace-nowrap overflow-hidden" }, formatEUR(totaux.netFiscal)), /* @__PURE__ */ React.createElement("span", { className: "font-mono text-xs font-semibold text-right whitespace-nowrap overflow-hidden" }, formatEUR(totaux.ps))), totaux.interessement > 0 && /* @__PURE__ */ React.createElement("p", { className: "text-xs mt-1", style: { color: COLORS.gold } }, "🎁 Intéressement ", annee, " : ", formatEUR(totaux.interessement), " inclus dans l'estimation.")), personneId === "nicolas" && estimationNicolas && /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium mb-3" }, "🍽️ Titres-Restaurant — ", annee), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-4 gap-1 text-xs text-stone-500 mb-1 px-1" }, /* @__PURE__ */ React.createElement("span", null, "Mois"), /* @__PURE__ */ React.createElement("span", null, "Jours ouvrés"), /* @__PURE__ */ React.createElement("span", null, "Déduits"), /* @__PURE__ */ React.createElement("span", null, "TR")), /* @__PURE__ */ React.createElement("div", { className: "space-y-1" }, estimationNicolas.moisDetail.map(function(mDet, i) {
+    const key = annee + "-" + String(mDet.mois).padStart(2, "0");
+    const eMois = personne.entreesMensuelles[key] || {};
+    return /* @__PURE__ */ React.createElement("div", { key: mDet.mois, className: "grid grid-cols-4 gap-1 items-center rounded-lg px-1 py-1", style: { backgroundColor: i % 2 === 1 ? COLORS.stripe : "transparent" } }, /* @__PURE__ */ React.createElement("span", { className: "text-xs font-mono capitalize" }, MOIS_FR[i].slice(0, 3)), /* @__PURE__ */ React.createElement("span", { className: "font-mono text-xs" }, mDet.joursOuvres), /* @__PURE__ */ React.createElement("span", { className: "font-mono text-xs" }, mDet.joursDeduits), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        type: "number",
+        step: "1",
+        value: eMois.trManuel === void 0 ? "" : eMois.trManuel,
+        placeholder: String(mDet.joursTravaillesCalcule),
+        onChange: (ev) => updateMois(mDet.mois, "trManuel", ev.target.value === "" ? "" : Number(ev.target.value)),
+        className: "font-mono w-full border rounded px-1 py-1 text-xs font-semibold " + (mDet.trEstManuel ? "border-stone-400" : "border-stone-300")
+      }
+    ));
+  })), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mt-2" }, "Nombre calculé automatiquement (jours ouvrés − RTT/CP/Formation/Pont offert posés le mois précédent) ; saisis une valeur pour corriger un mois précis — elle est mémorisée et recalcule automatiquement les montants. Champ vide = calcul auto.")), personneId === "nicolas" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium px-1" }, "Bulletins de référence"), HISTORIQUE.map(function(b, i) {
+    return /* @__PURE__ */ React.createElement(Card, { key: i }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between mb-2" }, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium" }, b.periode), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, "payé le ", formatDateFR(b.paiement))), /* @__PURE__ */ React.createElement("div", { className: "font-mono grid grid-cols-2 gap-y-1.5 text-sm" }, /* @__PURE__ */ React.createElement("p", { className: "text-stone-500 font-sans" }, "Salaire réf."), /* @__PURE__ */ React.createElement("p", { className: "text-right" }, formatEUR(b.salaireRef)), /* @__PURE__ */ React.createElement("p", { className: "text-stone-500 font-sans" }, "Net payé"), /* @__PURE__ */ React.createElement("p", { className: "text-right font-semibold" }, formatEUR(b.netPaye)), /* @__PURE__ */ React.createElement("p", { className: "text-stone-500 font-sans" }, "CP acquis/pris/solde"), /* @__PURE__ */ React.createElement("p", { className: "text-right" }, b.cpAcquis, " / ", b.cpPris, " / ", b.cpSolde)), b.note && /* @__PURE__ */ React.createElement("p", { className: "text-xs mt-2 pt-2 border-t border-stone-100", style: { color: COLORS.gold } }, b.note));
+  })), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between mb-3" }, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium" }, "🗄️ Archives — ", personne.nom || "(sans nom)"), /* @__PURE__ */ React.createElement("button", { onClick: () => ajouterArchiveSalaires(annee, personneId), className: "text-xs flex items-center gap-1 rounded-full px-3 py-1.5", style: { backgroundColor: COLORS.stripe } }, archiveExistante ? "Réarchiver " + annee : "Archiver " + annee)), /* @__PURE__ */ React.createElement("div", { className: "space-y-1" }, archivesPersonne.length === 0 && /* @__PURE__ */ React.createElement("p", { className: "text-sm text-stone-400" }, "Aucune année archivée pour ", personne.nom || "cette personne", "."), archivesPersonne.map(function(a, i) {
+    const ouvert = archiveOuverte === a.id;
+    return /* @__PURE__ */ React.createElement("div", { key: a.id, className: "rounded-lg overflow-hidden", style: { backgroundColor: i % 2 === 1 ? COLORS.stripe : "transparent" } }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between px-2 py-1.5 cursor-pointer", onClick: () => setArchiveOuverte(ouvert ? null : a.id) }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "font-mono" }, a.annee, " — Net payé ", formatEUR(a.totaux.netPaye)), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, "Archivée le ", formatDateFR(a.dateArchivage))), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2", onClick: (ev) => ev.stopPropagation() }, /* @__PURE__ */ React.createElement("button", { onClick: () => supprimerArchiveSalaires(a.id) }, /* @__PURE__ */ React.createElement(TrashIcon, { color: COLORS.loss })), /* @__PURE__ */ React.createElement("span", { className: "text-xs text-stone-400" }, ouvert ? "▲" : "▼"))), ouvert && /* @__PURE__ */ React.createElement("div", { className: "px-2 pb-2" }, /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-4 gap-1 text-xs text-stone-500 mb-1 px-1" }, /* @__PURE__ */ React.createElement("span", null, "Total"), /* @__PURE__ */ React.createElement("span", null, "💶 Net payé"), /* @__PURE__ */ React.createElement("span", null, "🧾 N.fiscal"), /* @__PURE__ */ React.createElement("span", null, "📉 PAS")), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-4 gap-1 items-center px-1 py-0.5" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs font-mono" }, a.annee), /* @__PURE__ */ React.createElement("span", { className: "font-mono text-xs font-semibold text-right whitespace-nowrap overflow-hidden", style: { color: COLORS.accent } }, formatEUR(a.totaux.netPaye)), /* @__PURE__ */ React.createElement("span", { className: "font-mono text-xs text-right whitespace-nowrap overflow-hidden" }, formatEUR(a.totaux.netFiscal)), /* @__PURE__ */ React.createElement("span", { className: "font-mono text-xs text-right whitespace-nowrap overflow-hidden" }, formatEUR(a.totaux.ps))), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mt-1 px-1" }, Object.keys(a.entreesMensuelles || {}).length, " mois renseigné(s) au moment de l'archivage.")));
+  })), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mt-3" }, "Archiver conserve un instantané des bulletins saisis pour ", annee, " et cette personne, même si tu les modifies plus tard.")));
+}
+function PrimeBox({ label, montant }) {
+  return /* @__PURE__ */ React.createElement("div", { className: "rounded-lg p-2", style: { backgroundColor: COLORS.stripe } }, /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-500" }, label), /* @__PURE__ */ React.createElement("p", { className: "font-mono text-sm font-semibold" }, montant != null ? formatEUR(montant) : "à renseigner"));
+}
+function MetricBox({ label, value, dark = false }) {
+  return /* @__PURE__ */ React.createElement("div", { className: "rounded-lg p-2.5 flex flex-col justify-between", style: { backgroundColor: dark ? "#2A3A34" : COLORS.stripe, minHeight: "3.5rem" } }, /* @__PURE__ */ React.createElement("p", { className: "text-xs leading-tight", style: { color: dark ? "#8FA69B" : "#78716C" } }, label), /* @__PURE__ */ React.createElement("p", { className: "font-mono text-sm font-semibold mt-1", style: { color: dark ? "#fff" : COLORS.ink } }, value));
+}
+function PrimesTab({ config, updateConfig, anneeActuelle, primeMontant, nicolas, joursPris, archivesPrimes, ajouterArchivePrimes, supprimerArchivePrimes }) {
+  const estCetteAnnee = appliquerPrimes(estimerAnnee(nicolas, anneeActuelle, joursPris, config), config);
+  const brutAnneeProchaine = { vacances: primeMontant(config.primeVacancesPct, config.moisPrimeVacances, anneeActuelle + 1), noel: primeMontant(config.primeNoelPct, config.moisPrimeNoel, anneeActuelle + 1) };
+  const [archiveOuverte, setArchiveOuverte] = useState(null);
+  const archiveExistante = archivesPrimes.filter(function(a) {
+    return a.annee === anneeActuelle;
+  })[0];
+  return /* @__PURE__ */ React.createElement("div", { className: "space-y-4" }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium mb-1" }, "🎁 Prime de vacances"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mb-3" }, "Versée en ", MOIS_FR[config.moisPrimeVacances - 1], ", calculée sur le salaire brut de Nicolas ce mois-là. Le brut est cotisé comme le salaire — le net payé/net fiscal effectifs sont inférieurs."), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-3 gap-2" }, /* @__PURE__ */ React.createElement(PrimeBox, { label: "Brut", montant: estCetteAnnee.primeVacances }), /* @__PURE__ */ React.createElement(PrimeBox, { label: "≈ Net payé", montant: estCetteAnnee.primeVacancesNetPaye }), /* @__PURE__ */ React.createElement(PrimeBox, { label: "≈ Net fiscal", montant: estCetteAnnee.primeVacancesNetFiscal })), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mt-2 px-1" }, "Année prochaine (brut) : ", brutAnneeProchaine.vacances != null ? formatEUR(brutAnneeProchaine.vacances) : "à renseigner"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-3 mt-3" }, /* @__PURE__ */ React.createElement(NumberField, { label: "% du salaire", value: config.primeVacancesPct, onChange: (v) => updateConfig({ primeVacancesPct: v }), suffix: "%" }), /* @__PURE__ */ React.createElement("label", { className: "block" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs text-stone-500" }, "Mois de versement"), /* @__PURE__ */ React.createElement("select", { value: config.moisPrimeVacances, onChange: (e) => updateConfig({ moisPrimeVacances: Number(e.target.value) }), className: "w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" }, MOIS_FR.map((m, i) => /* @__PURE__ */ React.createElement("option", { key: i, value: i + 1 }, m)))))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium mb-1" }, "🎁 Prime de Noël"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mb-3" }, "Versée en ", MOIS_FR[config.moisPrimeNoel - 1], ", calculée sur le salaire brut de Nicolas ce mois-là. Le brut est cotisé comme le salaire — le net payé/net fiscal effectifs sont inférieurs."), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-3 gap-2" }, /* @__PURE__ */ React.createElement(PrimeBox, { label: "Brut", montant: estCetteAnnee.primeNoel }), /* @__PURE__ */ React.createElement(PrimeBox, { label: "≈ Net payé", montant: estCetteAnnee.primeNoelNetPaye }), /* @__PURE__ */ React.createElement(PrimeBox, { label: "≈ Net fiscal", montant: estCetteAnnee.primeNoelNetFiscal })), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mt-2 px-1" }, "Année prochaine (brut) : ", brutAnneeProchaine.noel != null ? formatEUR(brutAnneeProchaine.noel) : "à renseigner"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-3 mt-3" }, /* @__PURE__ */ React.createElement(NumberField, { label: "% du salaire", value: config.primeNoelPct, onChange: (v) => updateConfig({ primeNoelPct: v }), suffix: "%" }), /* @__PURE__ */ React.createElement("label", { className: "block" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs text-stone-500" }, "Mois de versement"), /* @__PURE__ */ React.createElement("select", { value: config.moisPrimeNoel, onChange: (e) => updateConfig({ moisPrimeNoel: Number(e.target.value) }), className: "w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" }, MOIS_FR.map((m, i) => /* @__PURE__ */ React.createElement("option", { key: i, value: i + 1 }, m)))))), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 px-1" }, `Calculée à partir du salaire réellement saisi pour Nicolas ce mois-là dans l'onglet Salaires. "≈ Net payé/Net fiscal" utilisent le même ratio implicite que l'onglet Estimations (dérivé d'un mois normal réel).`), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between mb-3" }, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium" }, "🗄️ Archives"), /* @__PURE__ */ React.createElement("button", { onClick: () => ajouterArchivePrimes(anneeActuelle, estCetteAnnee), className: "text-xs flex items-center gap-1 rounded-full px-3 py-1.5", style: { backgroundColor: COLORS.stripe } }, archiveExistante ? "Réarchiver " + anneeActuelle : "Archiver " + anneeActuelle)), /* @__PURE__ */ React.createElement("div", { className: "space-y-1" }, archivesPrimes.length === 0 && /* @__PURE__ */ React.createElement("p", { className: "text-sm text-stone-400" }, "Aucune année archivée."), archivesPrimes.map(function(a, i) {
+    const ouvert = archiveOuverte === a.id;
+    return /* @__PURE__ */ React.createElement("div", { key: a.id, className: "rounded-lg overflow-hidden", style: { backgroundColor: i % 2 === 1 ? COLORS.stripe : "transparent" } }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between px-2 py-1.5 cursor-pointer", onClick: () => setArchiveOuverte(ouvert ? null : a.id) }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "font-mono" }, a.annee, " — Vacances ", a.primeVacances != null ? formatEUR(a.primeVacances) : "—", " · Noël ", a.primeNoel != null ? formatEUR(a.primeNoel) : "—"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, "Archivée le ", formatDateFR(a.dateArchivage))), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2", onClick: (ev) => ev.stopPropagation() }, /* @__PURE__ */ React.createElement("button", { onClick: () => supprimerArchivePrimes(a.id) }, /* @__PURE__ */ React.createElement(TrashIcon, { color: COLORS.loss })), /* @__PURE__ */ React.createElement("span", { className: "text-xs text-stone-400" }, ouvert ? "▲" : "▼"))), ouvert && /* @__PURE__ */ React.createElement("div", { className: "px-2 pb-2 grid grid-cols-3 gap-2" }, /* @__PURE__ */ React.createElement(PrimeBox, { label: "Vacances (" + MOIS_FR[(a.moisPrimeVacances || 1) - 1].slice(0, 3) + ")", montant: a.primeVacances }), /* @__PURE__ */ React.createElement(PrimeBox, { label: "≈ Net payé", montant: a.primeVacancesNetPaye }), /* @__PURE__ */ React.createElement(PrimeBox, { label: "≈ Net fiscal", montant: a.primeVacancesNetFiscal }), /* @__PURE__ */ React.createElement(PrimeBox, { label: "Noël (" + MOIS_FR[(a.moisPrimeNoel || 11) - 1].slice(0, 3) + ")", montant: a.primeNoel }), /* @__PURE__ */ React.createElement(PrimeBox, { label: "≈ Net payé", montant: a.primeNoelNetPaye }), /* @__PURE__ */ React.createElement(PrimeBox, { label: "≈ Net fiscal", montant: a.primeNoelNetFiscal })));
+  })), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mt-3" }, "Archiver conserve un instantané des primes calculées pour ", anneeActuelle, ", même si tu modifies les paramètres plus tard.")));
+}
+function EstimationTab({ nicolas, joursPris, config, updateConfig, archives, ajouterArchive, supprimerArchive, anneeActuelle, primeMontant }) {
+  const [annee, setAnnee] = useState(anneeActuelle);
+  const [detailOuvert, setDetailOuvert] = useState(false);
+  const [erreurCalcul, setErreurCalcul] = useState(null);
+  const [archiveOuverte, setArchiveOuverte] = useState(null);
+  let estimation = null;
+  try {
+    const estimationBase = estimerAnnee(nicolas, annee, joursPris, config);
+    const rttMensuelEstim = calculRTTMensuel(annee, joursPris, config.rttBaseAnnuel, nicolas ? nicolas.dateEntree : null);
+    estimation = { ...appliquerPrimes(estimationBase, config), rttMensuel: rttMensuelEstim };
+  } catch (e) {
+    if (erreurCalcul !== e.message) setErreurCalcul(e.message);
+  }
+  if (!estimation) {
+    return /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium mb-1", style: { color: COLORS.loss } }, "⚠️ Calcul d'estimation impossible"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-500" }, erreurCalcul || "Erreur inconnue lors du calcul."));
+  }
+  const archiveExistante = archives.filter(function(a) {
+    return a.annee === annee;
+  })[0];
+  return /* @__PURE__ */ React.createElement("div", { className: "space-y-4" }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between mb-1" }, /* @__PURE__ */ React.createElement("button", { onClick: () => setAnnee(annee - 1), className: "px-3 py-1 text-sm rounded-lg", style: { backgroundColor: COLORS.stripe } }, "◀"), /* @__PURE__ */ React.createElement("p", { className: "font-display text-lg" }, "Estimation ", annee), /* @__PURE__ */ React.createElement("button", { onClick: () => setAnnee(annee + 1), className: "px-3 py-1 text-sm rounded-lg", style: { backgroundColor: COLORS.stripe } }, "▶")), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 text-center" }, estimation.nbMoisEstimes, " mois estimé(s) sur 12", archiveExistante ? " · archivée le " + formatDateFR(archiveExistante.dateArchivage) : "")), /* @__PURE__ */ React.createElement(Card, { dark: true }, /* @__PURE__ */ React.createElement("p", { className: "text-xs uppercase tracking-wide", style: { color: "#8FA69B" } }, "💰 Résumé exécutif — ", annee), /* @__PURE__ */ React.createElement("p", { className: "font-display font-mono text-3xl mt-1" }, formatEUR(estimation.totalGeneral)), /* @__PURE__ */ React.createElement("p", { className: "text-xs mt-1", style: { color: "#8FA69B" } }, "Salaire + prime d'expérience, sur 12 mois"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-3 gap-2 mt-3 pt-3", style: { borderTop: "1px solid #33443d" } }, /* @__PURE__ */ React.createElement(MetricBox, { dark: true, label: "Salaire", value: formatEUR(estimation.totalSalaire) }), /* @__PURE__ */ React.createElement(MetricBox, { dark: true, label: "⭐ Prime exp.", value: formatEUR(estimation.totalPrime) }), /* @__PURE__ */ React.createElement(MetricBox, { dark: true, label: "🍽️ TR", value: formatEUR(estimation.totalTR) }), estimation.totalInteressement > 0 && /* @__PURE__ */ React.createElement("div", { className: "col-span-3 mt-1 pt-1", style: { borderTop: "1px solid #33443d" } }, /* @__PURE__ */ React.createElement("p", { className: "text-xs", style: { color: "#96793C" } }, "🎯 Intéressement inclus"), /* @__PURE__ */ React.createElement("p", { className: "font-mono text-sm", style: { color: "#96793C" } }, formatEUR(estimation.totalInteressement)))), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-2 mt-2 pt-2", style: { borderTop: "1px solid #33443d" } }, /* @__PURE__ */ React.createElement(MetricBox, { dark: true, label: "Brut annuel estimé", value: formatEUR(estimation.totalBrut) }), /* @__PURE__ */ React.createElement(MetricBox, { dark: true, label: "💶 Net payé estimé", value: formatEUR(estimation.totalNet) })), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-3 gap-2 mt-2 pt-2", style: { borderTop: "1px solid #33443d" } }, /* @__PURE__ */ React.createElement(MetricBox, { dark: true, label: "🧾 Net fiscal estimé", value: formatEUR(estimation.totalNetFiscal) }), /* @__PURE__ */ React.createElement(MetricBox, { dark: true, label: "📉 PAS (" + config.tauxPAS + "%)", value: formatEUR(estimation.totalPAS) }), /* @__PURE__ */ React.createElement(MetricBox, { dark: true, label: "🚌 Transport", value: formatEUR(estimation.totalTransport) }))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium mb-3" }, "🎁 Primes de l'année"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-3 gap-2" }, /* @__PURE__ */ React.createElement(MetricBox, { label: "⭐ Expérience", value: formatEUR(estimation.totalPrime) }), /* @__PURE__ */ React.createElement(MetricBox, { label: "Vacances (brut)", value: estimation.primeVacances != null ? formatEUR(estimation.primeVacances) : "à renseigner" }), /* @__PURE__ */ React.createElement(MetricBox, { label: "Noël (brut)", value: estimation.primeNoel != null ? formatEUR(estimation.primeNoel) : "à renseigner" })), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mt-2" }, "Détail et méthode de calcul dans l'onglet Primes.")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium mb-3" }, "Tableau récapitulatif"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-3 gap-2 text-xs text-stone-500 mb-1 px-1" }, /* @__PURE__ */ React.createElement("span", null, "Mois"), /* @__PURE__ */ React.createElement("span", { className: "text-right" }, "🧾 Net fiscal"), /* @__PURE__ */ React.createElement("span", { className: "text-right" }, "💶 Net payé")), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mb-2 px-1" }, "Prime d'expérience et TR détaillés ci-dessous."), /* @__PURE__ */ React.createElement("div", { className: "space-y-1" }, estimation.moisDetail.map(function(m, i) {
+    return /* @__PURE__ */ React.createElement("div", { key: m.mois, className: "grid grid-cols-3 gap-2 items-center rounded-lg px-1 py-1.5", style: { backgroundColor: i % 2 === 1 ? COLORS.stripe : "transparent" } }, /* @__PURE__ */ React.createElement("span", { className: "text-xs font-mono capitalize" }, MOIS_FR[m.mois - 1].slice(0, 3), m.estimeSalaire ? "*" : ""), /* @__PURE__ */ React.createElement("span", { className: "font-mono text-xs text-right whitespace-nowrap overflow-hidden" }, formatEUR(m.netFiscalEstime)), /* @__PURE__ */ React.createElement("span", { className: "font-mono text-xs font-semibold text-right whitespace-nowrap overflow-hidden", style: { color: COLORS.accent } }, formatEUR(m.netEstime)));
+  })), estimation.nbMoisEstimes > 0 && /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mt-2" }, "* mois estimé (donnée absente dans Salaires)")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("button", { onClick: () => setDetailOuvert(!detailOuvert), className: "w-full flex items-center justify-between" }, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium" }, "Détail du calcul, mois par mois"), /* @__PURE__ */ React.createElement("span", { className: "text-xs", style: { color: COLORS.accent } }, detailOuvert ? "masquer" : "afficher")), detailOuvert && /* @__PURE__ */ React.createElement("div", { className: "mt-3 space-y-3" }, estimation.moisDetail.map(function(m) {
+    return /* @__PURE__ */ React.createElement("div", { key: m.mois, className: "text-xs border-t border-stone-100 pt-2" }, /* @__PURE__ */ React.createElement("p", { className: "font-medium capitalize mb-1" }, MOIS_FR[m.mois - 1], " ", annee, m.estimeSalaire ? " (estimé)" : " (réel)"), /* @__PURE__ */ React.createElement("p", { className: "text-stone-500 font-mono" }, "Salaire base : ", formatEUR(m.salaireBase), m.augmentationPct ? " (dont +" + m.augmentationPct + "% augmentation générale " + annee + ")" : ""), /* @__PURE__ */ React.createElement("p", { className: "text-stone-500 font-mono" }, "Prime d'expérience : base ", formatEUR(m.baseConventionnelle), " × taux ", m.tauxValorisationAnnee, "% (", annee, ") = ", formatEUR(m.primeExperience)), /* @__PURE__ */ React.createElement("p", { className: "text-stone-500 font-mono" }, "Jours ouvrés : ", m.joursOuvres, " − ", m.joursDeduits, " (RTT/CP/Formation/Pont offert du mois précédent) = ", m.joursTravailles, " jours travaillés"), /* @__PURE__ */ React.createElement("p", { className: "text-stone-500 font-mono" }, "🍽️ TR attribués : ", m.ticketsEstimes, " — part salariale ", formatEUR(config.ticketValeur), "×", config.ticketPartSalarialePct, "%=💶", formatEUR(m.valeurTR), " / part employeur ", formatEUR(m.valeurTREmployeur)), /* @__PURE__ */ React.createElement("p", { className: "text-stone-500 font-mono" }, "🧾 Net fiscal estimé : ", m.netFiscalDepuisReel ? "bulletin réel" : "référence " + formatEUR(config.referenceNetFiscal), m.interessement ? " + 🎁 intéressement " + formatEUR(m.interessement) : "", " = ", formatEUR(m.netFiscalEstime), " — 📉 PAS : × ", config.tauxPAS, "% = ", formatEUR(m.pasEstime)), /* @__PURE__ */ React.createElement("p", { className: "text-stone-500 font-mono" }, "💶 Net payé estimé : réf. ", formatEUR(config.referenceNetPaye), " ", m.ajustementTR >= 0 ? "−" : "+", " écart TR (", m.ecartTR >= 0 ? "+" : "", m.ecartTR, "j = ", formatEUR(Math.abs(m.ajustementTR)), ") = ", formatEUR(m.netEstime)), /* @__PURE__ */ React.createElement("p", { className: "text-stone-500 font-mono" }, "Déductions : mutuelle conjoint ", formatEUR(m.mutuelleConjoint), " — 🚌 Transport (50% de ", formatEUR(config.abonnementTransportMensuel), ") : +", formatEUR(m.primeTransport)), /* @__PURE__ */ React.createElement("p", { className: "font-medium mt-1" }, "Total du mois : ", formatEUR(m.totalMois)));
+  }))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium mb-2" }, "Hypothèses retenues"), /* @__PURE__ */ React.createElement("ul", { className: "text-xs text-stone-500 space-y-1.5 list-none" }, /* @__PURE__ */ React.createElement("li", null, "• Pour les mois sans salaire renseigné, moyenne robuste des mois réels connus utilisée (recalculée à chaque nouveau bulletin saisi ; un mois qui s'écarte de plus de 15% de la médiane, ex. une prime exceptionnelle, est exclu du calcul) : ", estimation.moyenneSalaireReel != null ? formatEUR(estimation.moyenneSalaireReel) : "aucune donnée disponible", "."), /* @__PURE__ */ React.createElement("li", null, "• Les mois estimés à partir de ", formatDateFR(config.valorisationConventionDate), " appliquent le taux de revalorisation de l'année en cours au salaire de référence utilisé."), /* @__PURE__ */ React.createElement("li", null, "• Les titres-restaurant supposent 1 titre par jour ouvré réellement travaillé, sur la base des RTT/CP/Formation/Pont offert posés le mois précédent (comme sur le bulletin réel)."), /* @__PURE__ */ React.createElement("li", null, "• Les jours ouvrés excluent samedis, dimanches et jours fériés (calendrier France métropolitaine, recalculé chaque année)."), /* @__PURE__ */ React.createElement("li", null, "• Une augmentation générale (%) peut être saisie sur la ligne de janvier, pour Nicolas uniquement : elle majore le salaire de base retenu pour les mois estimés à partir de janvier. Un intéressement (€), une seule fois par an, peut être saisi sur la ligne de juillet : il s'ajoute au net fiscal et au net payé du mois, qu'il soit estimé ou déjà renseigné avec des données réelles."), /* @__PURE__ */ React.createElement("li", null, "• Brut = salaire + prime d'expérience (exact, confirmé sur bulletins réels). Net payé = salaire de référence (janvier) ± écart de TR par rapport au mois de référence (seule variable d'ajustement). Net fiscal = valeur de référence, sauf mois avec bulletin réel. Mai et novembre suivent la même règle, primes vacances/Noël ajoutées en plus."))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium mb-1" }, "Salaire de référence (janvier)"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mb-3" }, "Point de départ (janvier). Net payé, net fiscal et taux de PAS se recalculent ensuite automatiquement en moyenne de TOUS les bulletins réels connus dès qu'un nouveau bulletin est saisi (n'importe quel mois) — ces champs ne servent que tant qu'aucun bulletin réel n'existe encore. Le net payé varie en plus selon l'écart de TR par rapport au TR de référence. Mai et novembre suivent la même règle, leur prime (vacances/Noël) s'ajoute en plus."), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-3" }, /* @__PURE__ */ React.createElement(NumberField, { label: "Salaire réf.", value: config.referenceSalaire, onChange: (v) => updateConfig({ referenceSalaire: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Net payé réf.", value: config.referenceNetPaye, onChange: (v) => updateConfig({ referenceNetPaye: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Net fiscal réf.", value: config.referenceNetFiscal, onChange: (v) => updateConfig({ referenceNetFiscal: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberField, { label: "TR réf.", value: config.referenceTR, onChange: (v) => updateConfig({ referenceTR: v }) }))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium mb-3" }, "Formules utilisées"), /* @__PURE__ */ React.createElement("div", { className: "text-xs text-stone-500 space-y-1.5 font-mono" }, /* @__PURE__ */ React.createElement("p", null, "Salaire mensuel = donnée réelle du bulletin, ou moyenne des mois réels connus (majorée de l'augmentation générale % saisie en janvier, Nicolas uniquement)"), /* @__PURE__ */ React.createElement("p", null, "Prime d'expérience = Base conventionnelle Classe 3 (", formatEUR(config.baseConventionnelleClasse3), ") × Taux de revalorisation de l'année"), /* @__PURE__ */ React.createElement("p", null, "Brut estimé = Salaire mensuel + Prime d'expérience (exact)"), /* @__PURE__ */ React.createElement("p", null, "Net estimé = Net payé de référence dynamique (", formatEUR(estimation.referenceNetPayeDynamique), ", moyenne de ", estimation.nbBulletinsReels, " bulletin(s) réel(s) connu(s)) − (TR du mois − TR de référence [", config.referenceTR, "]) × Valeur TR × Part salariale + Intéressement net payé (juillet, valeur indépendante du salaire)"), /* @__PURE__ */ React.createElement("p", null, "Net fiscal estimé = Net fiscal de référence dynamique (", formatEUR(estimation.referenceNetFiscalDynamique), "), ou net fiscal réel saisi si disponible, + Intéressement net fiscal (juillet, valeur indépendante du salaire) — PAS = Net fiscal × Taux PAS dynamique (", estimation.tauxPASDynamique, "%)"), /* @__PURE__ */ React.createElement("p", null, "Prime transport = Abonnement STAR/Keolis × Remboursement (", config.remboursementTransportPct, "%)"), /* @__PURE__ */ React.createElement("p", null, "Jours travaillés (= nb TR) = Jours ouvrés du mois (hors week-ends et jours fériés) − RTT/CP/Formation/Pont offert posés le mois précédent (sauf TR manuel saisi)"), /* @__PURE__ */ React.createElement("p", null, "Valeur TR = Nb TR × Valeur unitaire × Part salariale (", config.ticketPartSalarialePct, "%) — cumul annuel = somme des 12 mois"), /* @__PURE__ */ React.createElement("p", null, "Total mensuel = Salaire mensuel + Prime d'expérience"))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium mb-3" }, "📈 Revalorisation conventionnelle"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-3" }, /* @__PURE__ */ React.createElement(NumberField, { label: "Base conventionnelle Classe 3 (2025)", value: config.baseConventionnelleClasse3, onChange: (v) => updateConfig({ baseConventionnelleClasse3: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Croissance base 2027+ (moyenne 2024-26)", value: config.croissanceBaseMoyenne, onChange: (v) => updateConfig({ croissanceBaseMoyenne: v }), suffix: "%/an" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Taux revalorisation 2025", value: config.valorisationTauxDepart, onChange: (v) => updateConfig({ valorisationTauxDepart: v }), suffix: "%" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Incrément annuel", value: config.valorisationIncrementAnnuel, onChange: (v) => updateConfig({ valorisationIncrementAnnuel: v }), suffix: "pts/an" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Plafond revalorisation", value: config.valorisationPlafond, onChange: (v) => updateConfig({ valorisationPlafond: v }), suffix: "%" }), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(TextDateField, { label: "Date d'effet de la valorisation", value: config.valorisationConventionDate, onChange: (v) => updateConfig({ valorisationConventionDate: v }) })))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium mb-3" }, "🍽️ Titres-restaurant"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-3" }, /* @__PURE__ */ React.createElement(NumberField, { label: "Valeur unitaire TR", value: config.ticketValeur, onChange: (v) => updateConfig({ ticketValeur: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Part salariale TR", value: config.ticketPartSalarialePct, onChange: (v) => updateConfig({ ticketPartSalarialePct: v }), suffix: "%" }))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium mb-3" }, "🚌 Transport (STAR/Keolis)"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-3" }, /* @__PURE__ */ React.createElement(NumberField, { label: "Abonnement STAR/Keolis", value: config.abonnementTransportMensuel, onChange: (v) => updateConfig({ abonnementTransportMensuel: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Remboursement transport", value: config.remboursementTransportPct, onChange: (v) => updateConfig({ remboursementTransportPct: v }), suffix: "%" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Abonnement suivant (STAR)", value: config.abonnementTransportSuivant, onChange: (v) => updateConfig({ abonnementTransportSuivant: v }), suffix: "€" }), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(TextDateField, { label: "Date d'effet du nouveau tarif", value: config.abonnementTransportDateEffet, onChange: (v) => updateConfig({ abonnementTransportDateEffet: v }) })))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium mb-3" }, "🏦 Fiscalité & divers"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-3" }, /* @__PURE__ */ React.createElement(NumberField, { label: "Taux PAS", value: config.tauxPAS, onChange: (v) => updateConfig({ tauxPAS: v }), suffix: "%" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Mutuelle conjoint / mois", value: config.mutuelleConjointMensuel, onChange: (v) => updateConfig({ mutuelleConjointMensuel: v }), suffix: "€" }))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between mb-3" }, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium" }, "🗄️ Archives"), /* @__PURE__ */ React.createElement("button", { onClick: () => ajouterArchive(estimation), className: "text-xs flex items-center gap-1 rounded-full px-3 py-1.5", style: { backgroundColor: COLORS.stripe } }, archiveExistante ? "Réarchiver " + annee : "Archiver " + annee)), /* @__PURE__ */ React.createElement("div", { className: "space-y-1 mb-3" }, archives.length === 0 && /* @__PURE__ */ React.createElement("p", { className: "text-sm text-stone-400" }, "Aucune année archivée."), archives.map(function(a, i) {
+    const ouvert = archiveOuverte === a.annee;
+    return /* @__PURE__ */ React.createElement("div", { key: a.annee, className: "rounded-lg overflow-hidden", style: { backgroundColor: i % 2 === 1 ? COLORS.stripe : "transparent" } }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between px-2 py-1.5 cursor-pointer", onClick: () => setArchiveOuverte(ouvert ? null : a.annee) }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "font-mono" }, a.annee, " — Total ", formatEUR(a.estimation.totalGeneral)), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, "Archivée le ", formatDateFR(a.dateArchivage), " · prime d'expérience à ", a.estimation.parametres.tauxPrimeExperience, "% (base ", formatEUR(a.estimation.parametres.baseConventionnelleClasse3), ")")), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2", onClick: (ev) => ev.stopPropagation() }, /* @__PURE__ */ React.createElement("button", { onClick: () => archiverAnnee(a.estimation) }, /* @__PURE__ */ React.createElement(DownloadIcon, { size: 15, color: COLORS.accent })), /* @__PURE__ */ React.createElement("button", { onClick: () => supprimerArchive(a.annee) }, /* @__PURE__ */ React.createElement(TrashIcon, { color: COLORS.loss })), /* @__PURE__ */ React.createElement("span", { className: "text-xs text-stone-400" }, ouvert ? "▲" : "▼"))), ouvert && /* @__PURE__ */ React.createElement("div", { className: "px-2 pb-2" }, /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-4 gap-1 text-xs text-stone-500 mb-1 px-1" }, /* @__PURE__ */ React.createElement("span", null, "Mois"), /* @__PURE__ */ React.createElement("span", null, "Salaire"), /* @__PURE__ */ React.createElement("span", null, "Prime exp."), /* @__PURE__ */ React.createElement("span", null, "Net payé")), a.estimation.moisDetail.map(function(m) {
+      return /* @__PURE__ */ React.createElement("div", { key: m.mois, className: "grid grid-cols-4 gap-1 items-center px-1 py-0.5" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs font-mono capitalize" }, MOIS_FR[m.mois - 1].slice(0, 3), m.estimeSalaire ? "*" : ""), /* @__PURE__ */ React.createElement("span", { className: "font-mono text-xs" }, formatEUR(m.salaireBase)), /* @__PURE__ */ React.createElement("span", { className: "font-mono text-xs" }, formatEUR(m.primeExperience)), /* @__PURE__ */ React.createElement("span", { className: "font-mono text-xs font-semibold", style: { color: COLORS.accent } }, formatEUR(m.netEstime)));
+    }), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mt-1 px-1" }, "TR total ", a.estimation.moisDetail.reduce(function(s, m) {
+      return s + Number(m.joursTravailles || 0);
+    }, 0), "j · Net fiscal total ", formatEUR(a.estimation.totalNetFiscal), " · Net total ", formatEUR(a.estimation.totalNet)), a.joursPris && /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 px-1" }, "🏖️ RTT/CP archivés : ", a.joursPris.length, " entrée(s) — RTT ", a.joursPris.filter(function(j) {
+      return j.type === "RTT";
+    }).reduce(function(s, j) {
+      return s + Number(j.duree);
+    }, 0), "j · CP ", a.joursPris.filter(function(j) {
+      return j.type === "CP";
+    }).reduce(function(s, j) {
+      return s + Number(j.duree);
+    }, 0), "j")));
+  })), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, "Archiver conserve les paramètres (taux, valorisation) utilisés à ce moment, même si tu les modifies plus tard.")));
+}
+function ImpotsTab({ personnes, updatePersonneChamp, config, updateConfig, joursPris, anneeActuelle }) {
+  const [annee, setAnnee] = useState(anneeActuelle);
+  const estInclus = function(p) {
+    return p.inclusFoyerFiscal !== false;
+  };
+  const totauxParPersonne = personnes.map(function(p) {
+    return { personne: p, totaux: totauxPersonneAnnee(p, annee, joursPris, config) };
+  });
+  const inclus = totauxParPersonne.filter(function(x) {
+    return estInclus(x.personne);
+  });
+  const revenuFoyer = round2(inclus.reduce(function(s, x) {
+    return s + x.totaux.netFiscal;
+  }, 0));
+  const pasFoyer = round2(inclus.reduce(function(s, x) {
+    return s + x.totaux.ps;
+  }, 0));
+  const nicolasEntry = totauxParPersonne.find(function(x) {
+    return x.personne.id === "nicolas";
+  });
+  const nicolasNetFiscal = nicolasEntry ? nicolasEntry.totaux.netFiscal : 0;
+  const situationFamiliale = config.situationFamiliale || "couple";
+  const nombreEnfants = Number(config.nombreEnfantsCharge) || 0;
+  const parts = nombreDeParts(situationFamiliale, nombreEnfants);
+  const impot = calculerImpotFoyer(revenuFoyer, situationFamiliale, nombreEnfants, config);
+  const reducSynd = calculerReductionSyndicale(config.cotisationSyndicaleNicolas, nicolasNetFiscal);
+  const reducScol = calculerReductionScolarite(config.enfantsCollege, config.enfantsLycee, config.enfantsSuperieur);
+  const totalReductions = round2(reducSynd.credit + reducScol.total);
+  const impotApresScolarite = round2(Math.max(0, impot.impotApresDecote - reducScol.total));
+  const impotNet = round2(impotApresScolarite - reducSynd.credit);
+  const montantAPayer = round2(impotNet - pasFoyer);
+  const sommeScolarite = (Number(config.enfantsCollege) || 0) + (Number(config.enfantsLycee) || 0) + (Number(config.enfantsSuperieur) || 0);
+  const anneeBareme = Number(config.baremeAnneeReference) || annee;
+  const baremeDesynchronise = annee !== anneeBareme;
+  return /* @__PURE__ */ React.createElement("div", { className: "space-y-4" }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between" }, /* @__PURE__ */ React.createElement("button", { onClick: () => setAnnee(annee - 1), className: "px-3 py-1 text-sm rounded-lg", style: { backgroundColor: COLORS.stripe } }, "◀"), /* @__PURE__ */ React.createElement("p", { className: "font-display text-lg" }, "Impôts ", annee), /* @__PURE__ */ React.createElement("button", { onClick: () => setAnnee(annee + 1), className: "px-3 py-1 text-sm rounded-lg", style: { backgroundColor: COLORS.stripe } }, "▶")), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mt-2" }, "Barème calé sur les revenus ", anneeBareme, ", vérifié le ", formatDateFR(config.baremeDateMaj), " (loi de finances) — décote, quotient familial et plafonnement inclus. À vérifier avec le simulateur officiel impots.gouv.fr avant toute décision, notamment si ta situation a changé depuis."), baremeDesynchronise && /* @__PURE__ */ React.createElement("div", { className: "mt-2" }, /* @__PURE__ */ React.createElement(Warning, null, "Le barème chargé correspond aux revenus ", anneeBareme, ", pas ", annee, ". ", annee > anneeBareme ? "Le barème officiel de cette année-là n'est en général publié qu'en toute fin d'année — ces valeurs sont utilisées par approximation en attendant." : "Mets à jour les paramètres en bas de page si tu veux les valeurs propres à ", annee, "."))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium mb-1" }, "Revenu net fiscal par personne — ", annee), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mb-3" }, "Coche les personnes à inclure dans le revenu du foyer fiscal (déclaration commune)."), /* @__PURE__ */ React.createElement("div", { className: "space-y-1" }, totauxParPersonne.map(function(x, i) {
+    return /* @__PURE__ */ React.createElement(Row, { key: x.personne.id, index: i }, /* @__PURE__ */ React.createElement("label", { className: "flex items-center gap-2 flex-1" }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: estInclus(x.personne), onChange: (e) => updatePersonneChamp(x.personne.id, { inclusFoyerFiscal: e.target.checked }) }), /* @__PURE__ */ React.createElement("span", null, x.personne.nom || "(sans nom)")), /* @__PURE__ */ React.createElement("span", { className: "font-mono text-xs text-right whitespace-nowrap" }, formatEUR(x.totaux.netFiscal), " · PAS ", formatEUR(x.totaux.ps)));
+  })), /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between mt-2 pt-2 border-t border-stone-200 px-1" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs font-semibold" }, "Total foyer fiscal coché"), /* @__PURE__ */ React.createElement("span", { className: "font-mono text-xs font-semibold text-right" }, formatEUR(revenuFoyer), " · PAS ", formatEUR(pasFoyer)))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium mb-3" }, "Situation familiale & parts"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-3" }, /* @__PURE__ */ React.createElement("label", { className: "block" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs text-stone-500" }, "Situation"), /* @__PURE__ */ React.createElement("select", { value: situationFamiliale, onChange: (e) => updateConfig({ situationFamiliale: e.target.value }), className: "w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" }, /* @__PURE__ */ React.createElement("option", { value: "couple" }, "Marié(e) / Pacsé(e)"), /* @__PURE__ */ React.createElement("option", { value: "seul" }, "Célibataire / divorcé(e) / veuf(ve)"))), /* @__PURE__ */ React.createElement(NumberField, { label: "Enfants à charge (quotient familial)", value: config.nombreEnfantsCharge, onChange: (v) => updateConfig({ nombreEnfantsCharge: v }), step: "1" })), sommeScolarite > nombreEnfants && /* @__PURE__ */ React.createElement("div", { className: "mt-3" }, /* @__PURE__ */ React.createElement(Warning, null, "Le total d'enfants scolarisés saisi plus bas (", sommeScolarite, ") dépasse le nombre d'enfants à charge (", nombreEnfants, ").")), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-3 gap-2 mt-3" }, /* @__PURE__ */ React.createElement(MetricBox, { label: "Parts adultes", value: parts.partsAdultes }), /* @__PURE__ */ React.createElement(MetricBox, { label: "Parts enfants", value: parts.partsEnfants }), /* @__PURE__ */ React.createElement(MetricBox, { label: "Total parts", value: parts.partsTotal, dark: true }))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium mb-1" }, "🏷️ Cotisation syndicale (Nicolas)"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mb-3" }, "Crédit d'impôt de 66 %, plafonné à 1 % du revenu net fiscal de Nicolas (", formatEUR(nicolasNetFiscal), " → plafond ", formatEUR(reducSynd.plafondBase), ")."), /* @__PURE__ */ React.createElement(NumberField, { label: "Cotisation versée en " + annee, value: config.cotisationSyndicaleNicolas, onChange: (v) => updateConfig({ cotisationSyndicaleNicolas: v }), suffix: "€" }), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-2 mt-3" }, /* @__PURE__ */ React.createElement(PrimeBox, { label: "Base retenue", montant: reducSynd.baseRetenue }), /* @__PURE__ */ React.createElement(PrimeBox, { label: "Crédit d'impôt (66%)", montant: reducSynd.credit }))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium mb-1" }, "🎓 Enfants scolarisés"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mb-3" }, "Réduction forfaitaire par enfant scolarisé au 31/12 : 61 € (collège), 153 € (lycée), 183 € (études supérieures)."), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-3 gap-2" }, /* @__PURE__ */ React.createElement(NumberField, { label: "Collège", value: config.enfantsCollege, onChange: (v) => updateConfig({ enfantsCollege: v }), step: "1" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Lycée", value: config.enfantsLycee, onChange: (v) => updateConfig({ enfantsLycee: v }), step: "1" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Supérieur", value: config.enfantsSuperieur, onChange: (v) => updateConfig({ enfantsSuperieur: v }), step: "1" })), /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between mt-3 pt-2 border-t border-stone-200 px-1" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs font-semibold" }, "Total réduction scolarité"), /* @__PURE__ */ React.createElement("span", { className: "font-mono text-xs font-semibold" }, formatEUR(reducScol.total)))), /* @__PURE__ */ React.createElement(Card, { dark: true }, /* @__PURE__ */ React.createElement("p", { className: "text-xs uppercase tracking-wide", style: { color: "#8FA69B" } }, "Impôt sur le revenu — ", annee), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-2 mt-3" }, /* @__PURE__ */ React.createElement(MetricBox, { label: "Revenu imposable foyer", value: formatEUR(impot.revenu), dark: true }), /* @__PURE__ */ React.createElement(MetricBox, { label: "Parts fiscales", value: parts.partsTotal, dark: true }), /* @__PURE__ */ React.createElement(MetricBox, { label: "Impôt brut (barème + QF)", value: formatEUR(impot.impotBrut), dark: true }), /* @__PURE__ */ React.createElement(MetricBox, { label: "Décote", value: "− " + formatEUR(impot.decote), dark: true }), /* @__PURE__ */ React.createElement(MetricBox, { label: "Impôt après décote", value: formatEUR(impot.impotApresDecote), dark: true }), /* @__PURE__ */ React.createElement(MetricBox, { label: "Réductions (scol. + synd.)", value: "− " + formatEUR(totalReductions), dark: true }), /* @__PURE__ */ React.createElement(MetricBox, { label: "Impôt net", value: formatEUR(impotNet), dark: true }), /* @__PURE__ */ React.createElement(MetricBox, { label: "PAS déjà versé (foyer)", value: "− " + formatEUR(pasFoyer), dark: true })), impot.plafonnementApplique && /* @__PURE__ */ React.createElement("p", { className: "text-xs mt-2", style: { color: "#8FA69B" } }, "Plafonnement du quotient familial appliqué (avantage lié aux enfants limité à ", formatEUR(impot.plafond), ")."), /* @__PURE__ */ React.createElement("div", { className: "mt-4 pt-3 border-t", style: { borderColor: "#3A4A44" } }, /* @__PURE__ */ React.createElement("p", { className: "text-xs", style: { color: "#8FA69B" } }, montantAPayer >= 0 ? "Solde restant à payer" : "Excédent à rembourser par l'administration"), /* @__PURE__ */ React.createElement("p", { className: "font-display font-mono text-3xl mt-1", style: { color: montantAPayer >= 0 ? COLORS.loss : COLORS.gain } }, formatEUR(Math.abs(montantAPayer))))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium mb-1" }, "⚙️ Barème & paramètres"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mb-3" }, "Le barème change chaque année (loi de finances), mais ce fichier est autonome et n'a pas de serveur : il ne peut pas aller le chercher tout seul sur un site officiel (et une extraction automatique serait risquée pour un montant d'impôt si la page source changeait de forme). Demande-moi de le mettre à jour dès qu'une nouvelle loi de finances est promulguée, ou modifie les valeurs ci-dessous à la main."), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-3" }, /* @__PURE__ */ React.createElement(NumberField, { label: "Seuil tranche 11 %", value: config.baremeSeuil1, onChange: (v) => updateConfig({ baremeSeuil1: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Seuil tranche 30 %", value: config.baremeSeuil2, onChange: (v) => updateConfig({ baremeSeuil2: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Seuil tranche 41 %", value: config.baremeSeuil3, onChange: (v) => updateConfig({ baremeSeuil3: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Seuil tranche 45 %", value: config.baremeSeuil4, onChange: (v) => updateConfig({ baremeSeuil4: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Plafond avantage / demi-part", value: config.plafondDemiPart, onChange: (v) => updateConfig({ plafondDemiPart: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Taux décote", value: config.decoteTauxPct, onChange: (v) => updateConfig({ decoteTauxPct: v }), suffix: "%" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Décote — seuil célibataire", value: config.decoteSeuilSeul, onChange: (v) => updateConfig({ decoteSeuilSeul: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Décote — constante célibataire", value: config.decoteConstanteSeul, onChange: (v) => updateConfig({ decoteConstanteSeul: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Décote — seuil couple", value: config.decoteSeuilCouple, onChange: (v) => updateConfig({ decoteSeuilCouple: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Décote — constante couple", value: config.decoteConstanteCouple, onChange: (v) => updateConfig({ decoteConstanteCouple: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Barème calé sur les revenus de l'année", value: config.baremeAnneeReference, onChange: (v) => updateConfig({ baremeAnneeReference: v }), step: "1" }), /* @__PURE__ */ React.createElement(TextDateField, { label: "Vérifié le", value: config.baremeDateMaj, onChange: (v) => updateConfig({ baremeDateMaj: v }) }), /* @__PURE__ */ React.createElement(TextDateField, { label: "Prochain rappel (bannière Accueil)", value: config.rappelBaremeDate, onChange: (v) => updateConfig({ rappelBaremeDate: v }) })), /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between mt-3 pt-3 border-t border-stone-200" }, /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 pr-2" }, "Pour vérifier toi-même les tranches en vigueur :"), /* @__PURE__ */ React.createElement("a", { href: "https://www.service-public.gouv.fr/particuliers/vosdroits/F1419?lang=fr", target: "_blank", rel: "noopener noreferrer", className: "px-3 py-1.5 rounded-lg text-xs text-white whitespace-nowrap", style: { backgroundColor: COLORS.accent } }, "🔗 Barème officiel"))));
+}
+function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifierJour, supprimerJour, periodesBloquees, ajouterPeriode, modifierPeriode, supprimerPeriode, personnes, ajouterPersonne, supprimerPersonne, updatePersonne, conges, today, archivesConges, ajouterArchiveConges, supprimerArchiveConges }) {
+  const [form, setForm] = useState({ date: "", dateFin: "", type: "RTT", duree: "1", note: "" });
+  const [archiveOuverte, setArchiveOuverte] = useState(null);
+  const anneeCourante = today.getFullYear();
+  const archiveExistante = archivesConges.filter(function(a) {
+    return a.annee === anneeCourante;
+  })[0];
+  const [editingJourId, setEditingJourId] = useState(null);
+  const [periodeForm, setPeriodeForm] = useState({ dateDebut: "", dateFin: "", label: "" });
+  const [editingPeriodeId, setEditingPeriodeId] = useState(null);
+  const [modeSelection, setModeSelection] = useState("jours");
+  const [joursChoisis, setJoursChoisis] = useState([]);
+  const [dateAAjouter, setDateAAjouter] = useState("");
+  const nicolasP = personnes.filter(function(p) {
+    return p.id === "nicolas";
+  })[0];
+  const maxRtt = Number(config.maxRttConsecutifs) || 5;
+  const dateFinEffective = form.dateFin || form.date;
+  let joursPlage = [];
+  if (editingJourId) {
+    joursPlage = form.date ? [form.date] : [];
+  } else if (modeSelection === "jours") {
+    joursPlage = joursChoisis;
+  } else if (modeSelection === "semaine") {
+    joursPlage = form.date ? semaineOuvree(form.date) : [];
+  } else {
+    joursPlage = form.date ? joursDansPlage(form.date, dateFinEffective, true) : [];
+  }
+  const blackoutsPlage = joursPlage.map(function(d) {
+    return dansPeriodeBloquee(d, periodesBloquees);
+  }).filter(Boolean);
+  const tropConsecutifs = form.type === "RTT" && joursPlage.some(function(d) {
+    return depasseRTTConsecutifs(d, joursPris, maxRtt);
+  });
+  const chevauchements = joursPlage.filter(function(d) {
+    return joursPris.some(function(j) {
+      return j.date === d && (!editingJourId || j.id !== editingJourId);
+    });
+  });
+  const dureeUnitaire = Number(form.duree) || 0;
+  const dureeTotale = round2(joursPlage.length * dureeUnitaire);
+  const soldeConcerne = form.type === "RTT" || form.type === "CP";
+  const soldeActuelType = form.type === "RTT" ? conges.soldeRTT : form.type === "CP" ? conges.soldeCP : null;
+  const soldeApres = soldeConcerne ? round2(soldeActuelType - dureeTotale + (editingJourId ? Number(form.duree) : 0)) : null;
+  const soldeNegatif = soldeConcerne && soldeApres < 0;
+  const blocageSubmit = !editingJourId && (soldeNegatif || chevauchements.length > 0);
+  function commencerEditionJour(j) {
+    setEditingJourId(j.id);
+    setForm({ date: j.date, dateFin: "", type: j.type, duree: String(j.duree), note: j.note || "" });
+  }
+  function annulerEditionJour() {
+    setEditingJourId(null);
+    setForm({ date: "", dateFin: "", type: "RTT", duree: "1", note: "" });
+    setJoursChoisis([]);
+  }
+  function ajouterDateChoisie() {
+    if (!dateAAjouter) return;
+    if (joursChoisis.indexOf(dateAAjouter) === -1) setJoursChoisis([...joursChoisis, dateAAjouter].sort());
+    setDateAAjouter("");
+  }
+  function retirerDateChoisie(d) {
+    setJoursChoisis(joursChoisis.filter(function(x) {
+      return x !== d;
+    }));
+  }
+  function submit(e) {
+    e.preventDefault();
+    if (blocageSubmit) return;
+    if (editingJourId) {
+      if (!form.date) return;
+      modifierJour(editingJourId, { date: form.date, type: form.type, duree: Number(form.duree), note: form.note });
+      setEditingJourId(null);
+    } else {
+      if (!joursPlage.length) return;
+      ajouterJoursPlage(joursPlage, form.type, Number(form.duree), form.note);
+      setJoursChoisis([]);
+    }
+    setForm({ date: "", dateFin: "", type: form.type, duree: "1", note: "" });
+  }
+  function commencerEditionPeriode(p) {
+    setEditingPeriodeId(p.id);
+    setPeriodeForm({ dateDebut: p.dateDebut, dateFin: p.dateFin, label: p.label || "" });
+  }
+  function annulerEditionPeriode() {
+    setEditingPeriodeId(null);
+    setPeriodeForm({ dateDebut: "", dateFin: "", label: "" });
+  }
+  function submitPeriode(e) {
+    e.preventDefault();
+    if (!periodeForm.dateDebut || !periodeForm.dateFin) return;
+    if (editingPeriodeId) {
+      modifierPeriode(editingPeriodeId, periodeForm);
+      setEditingPeriodeId(null);
+    } else {
+      ajouterPeriode(periodeForm);
+    }
+    setPeriodeForm({ dateDebut: "", dateFin: "", label: "" });
+  }
+  return /* @__PURE__ */ React.createElement("div", { className: "space-y-4" }, /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-3" }, /* @__PURE__ */ React.createElement(Card, { dark: true }, /* @__PURE__ */ React.createElement("p", { className: "text-xs", style: { color: "#8FA69B" } }, "📆 Solde RTT"), /* @__PURE__ */ React.createElement("p", { className: "font-mono text-2xl mt-1" }, formatJours(conges.soldeRTT), " j"), /* @__PURE__ */ React.createElement("p", { className: "text-xs mt-1", style: { color: "#8FA69B" } }, formatJours(conges.rttAcquis), " acquis − ", formatJours(conges.rttPris), " pris")), /* @__PURE__ */ React.createElement(Card, { dark: true }, /* @__PURE__ */ React.createElement("p", { className: "text-xs", style: { color: "#8FA69B" } }, "🏖️ Solde CP"), /* @__PURE__ */ React.createElement("p", { className: "font-mono text-2xl mt-1" }, formatJours(conges.soldeCP), " j"), /* @__PURE__ */ React.createElement("p", { className: "text-xs mt-1", style: { color: "#8FA69B" } }, formatJours(conges.cpAcquisFixe), " acquis − ", formatJours(conges.cpPris), " pris"))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-500" }, "En cours d'acquisition (CP, cycle suivant)"), /* @__PURE__ */ React.createElement("p", { className: "font-mono text-lg font-semibold mt-1" }, formatJours(conges.cpEnCours), " j"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mt-1" }, "Cycle d'usage courant depuis le ", formatDateFR(toLocalISODate(conges.debutCycleCP)), " · RTT sur année civile depuis le 1er janvier")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium mb-3" }, "Ancienneté & congés supplémentaires"), /* @__PURE__ */ React.createElement("div", { className: "space-y-1 mb-3" }, personnes.map(function(p, i) {
+    const annees = p.dateEntree ? anneesEcoulees(parseISO(p.dateEntree), today) : null;
+    const bonus = annees != null ? bonusAncienneteJours(annees) : 0;
+    const palier = prochainPalier(p.dateEntree, today);
+    return /* @__PURE__ */ React.createElement(Row, { key: p.id, index: i }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "font-mono" }, p.nom || "(sans nom)", annees != null ? " — " + annees + " ans" : ""), palier && /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, "Prochain palier : ", palier.annees, " ans (", formatDateFR(toLocalISODate(palier.date)), ")")), /* @__PURE__ */ React.createElement("p", { className: "font-mono text-sm font-medium", style: { color: bonus > 0 ? COLORS.gain : "#A8A29E" } }, bonus > 0 ? "+" + bonus + " j" : "—"));
+  })), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mb-3" }, "+1 semaine (5 j) à 10 ans, +2 semaines à 20 ans, +3 semaines à 30 ans. Seul le bonus de Nicolas s'ajoute automatiquement à son solde CP."), personnes.map(function(p) {
+    return /* @__PURE__ */ React.createElement("div", { key: p.id, className: "grid grid-cols-2 gap-2 mb-2" }, /* @__PURE__ */ React.createElement("input", { type: "text", value: p.nom, onChange: (e) => updatePersonne(p.id, { nom: e.target.value }), placeholder: "Nom", className: "border border-stone-300 rounded-lg px-3 py-2 text-sm" }), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ React.createElement("input", { type: "date", value: p.dateEntree, onChange: (e) => updatePersonne(p.id, { dateEntree: e.target.value }), className: "font-mono flex-1 border border-stone-300 rounded-lg px-3 py-2 text-sm" }), p.id !== "nicolas" && /* @__PURE__ */ React.createElement("button", { onClick: () => supprimerPersonne(p.id) }, /* @__PURE__ */ React.createElement(TrashIcon, { color: COLORS.loss }))));
+  }), /* @__PURE__ */ React.createElement("button", { onClick: ajouterPersonne, className: "text-xs mt-1", style: { color: COLORS.accent } }, "+ Ajouter une personne")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium mb-3" }, "Bases & cycle"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-3" }, /* @__PURE__ */ React.createElement(NumberField, { label: "Base RTT / an", value: config.rttBaseAnnuel, onChange: (v) => updateConfig({ rttBaseAnnuel: v }), step: "1", suffix: "j" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Base CP / an", value: config.cpBaseAnnuel, onChange: (v) => updateConfig({ cpBaseAnnuel: v }), step: "1", suffix: "j" }), /* @__PURE__ */ React.createElement("label", { className: "block" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs text-stone-500" }, "Début cycle CP (MM-JJ)"), /* @__PURE__ */ React.createElement("input", { type: "text", value: config.cpCycleDebut, onChange: (e) => updateConfig({ cpCycleDebut: e.target.value }), placeholder: "06-01", className: "font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" })), /* @__PURE__ */ React.createElement(NumberField, { label: "Max RTT consécutifs", value: config.maxRttConsecutifs, onChange: (v) => updateConfig({ maxRttConsecutifs: v }), step: "1", suffix: "j" }))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between mb-3" }, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium" }, "Périodes sans RTT/CP possible"), /* @__PURE__ */ React.createElement("button", { onClick: () => envoyerPeriodesParMail(periodesBloquees), className: "text-xs flex items-center gap-1 rounded-full px-3 py-1.5", style: { backgroundColor: COLORS.stripe } }, /* @__PURE__ */ React.createElement(MailIcon, { size: 12 }), " Envoyer par mail")), /* @__PURE__ */ React.createElement("div", { className: "space-y-1 mb-3" }, periodesBloquees.length === 0 && /* @__PURE__ */ React.createElement("p", { className: "text-sm text-stone-400" }, "Aucune période définie."), periodesBloquees.map(function(per, i) {
+    return /* @__PURE__ */ React.createElement(Row, { key: per.id, index: i }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "font-mono" }, formatDateFR(per.dateDebut), " → ", formatDateFR(per.dateFin)), per.label && /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, per.label)), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ React.createElement("button", { onClick: () => commencerEditionPeriode(per) }, /* @__PURE__ */ React.createElement(EditIcon, { size: 15, color: COLORS.accent })), /* @__PURE__ */ React.createElement("button", { onClick: () => supprimerPeriode(per.id) }, /* @__PURE__ */ React.createElement(TrashIcon, { color: COLORS.loss }))));
+  })), editingPeriodeId && /* @__PURE__ */ React.createElement("p", { className: "text-xs mb-2", style: { color: COLORS.accent } }, "Modification d'une période existante"), /* @__PURE__ */ React.createElement("form", { onSubmit: submitPeriode, className: "grid grid-cols-2 gap-2" }, /* @__PURE__ */ React.createElement("input", { type: "date", value: periodeForm.dateDebut, onChange: (e) => setPeriodeForm({ ...periodeForm, dateDebut: e.target.value }), className: "font-mono border border-stone-300 rounded-lg px-3 py-2 text-sm" }), /* @__PURE__ */ React.createElement("input", { type: "date", value: periodeForm.dateFin, onChange: (e) => setPeriodeForm({ ...periodeForm, dateFin: e.target.value }), className: "font-mono border border-stone-300 rounded-lg px-3 py-2 text-sm" }), /* @__PURE__ */ React.createElement("input", { type: "text", placeholder: "Motif (optionnel)", value: periodeForm.label, onChange: (e) => setPeriodeForm({ ...periodeForm, label: e.target.value }), className: "col-span-2 border border-stone-300 rounded-lg px-3 py-2 text-sm" }), /* @__PURE__ */ React.createElement("button", { type: "submit", className: "text-white rounded-lg py-2 text-sm font-medium", style: { backgroundColor: COLORS.ink, gridColumn: editingPeriodeId ? "span 1 / span 1" : "span 2 / span 2" } }, editingPeriodeId ? "Enregistrer" : "Bloquer cette période"), editingPeriodeId && /* @__PURE__ */ React.createElement("button", { type: "button", onClick: annulerEditionPeriode, className: "rounded-lg text-sm", style: { backgroundColor: COLORS.stripe, color: COLORS.ink } }, "Annuler"))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between mb-3" }, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium" }, "🌴 Historique CP"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, joursPris.filter(function(j) {
+    return j.type === "CP";
+  }).length, " entrée(s)")), /* @__PURE__ */ React.createElement("div", { className: "space-y-1" }, joursPris.filter(function(j) {
+    return j.type === "CP";
+  }).length === 0 && /* @__PURE__ */ React.createElement("p", { className: "text-sm text-stone-400" }, "Aucun CP saisi."), joursPris.filter(function(j) {
+    return j.type === "CP";
+  }).map(function(j, i) {
+    return /* @__PURE__ */ React.createElement(Row, { key: j.id, index: i }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "font-mono" }, formatDateFR(j.date), Number(j.duree) === 0.5 ? " (1/2 j)" : ""), j.note && /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, j.note)), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ React.createElement("button", { onClick: () => commencerEditionJour(j) }, /* @__PURE__ */ React.createElement(EditIcon, { size: 15, color: COLORS.accent })), /* @__PURE__ */ React.createElement("button", { onClick: () => supprimerJour(j.id) }, /* @__PURE__ */ React.createElement(TrashIcon, { color: COLORS.loss }))));
+  }))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between mb-3" }, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium" }, "📆 Historique RTT"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, joursPris.filter(function(j) {
+    return j.type === "RTT";
+  }).length, " entrée(s)")), /* @__PURE__ */ React.createElement("div", { className: "space-y-1" }, joursPris.filter(function(j) {
+    return j.type === "RTT";
+  }).length === 0 && /* @__PURE__ */ React.createElement("p", { className: "text-sm text-stone-400" }, "Aucun RTT saisi."), joursPris.filter(function(j) {
+    return j.type === "RTT";
+  }).map(function(j, i) {
+    return /* @__PURE__ */ React.createElement(Row, { key: j.id, index: i }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "font-mono" }, formatDateFR(j.date), Number(j.duree) === 0.5 ? " (1/2 j)" : ""), j.note && /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, j.note)), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ React.createElement("button", { onClick: () => commencerEditionJour(j) }, /* @__PURE__ */ React.createElement(EditIcon, { size: 15, color: COLORS.accent })), /* @__PURE__ */ React.createElement("button", { onClick: () => supprimerJour(j.id) }, /* @__PURE__ */ React.createElement(TrashIcon, { color: COLORS.loss }))));
+  }))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between mb-3" }, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium" }, "🌉 Historique Pont offert"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, joursPris.filter(function(j) {
+    return j.type === "PontOffert";
+  }).length, " entrée(s)")), /* @__PURE__ */ React.createElement("div", { className: "space-y-1" }, joursPris.filter(function(j) {
+    return j.type === "PontOffert";
+  }).length === 0 && /* @__PURE__ */ React.createElement("p", { className: "text-sm text-stone-400" }, "Aucun pont offert saisi."), joursPris.filter(function(j) {
+    return j.type === "PontOffert";
+  }).map(function(j, i) {
+    return /* @__PURE__ */ React.createElement(Row, { key: j.id, index: i }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "font-mono" }, formatDateFR(j.date), Number(j.duree) === 0.5 ? " (1/2 j)" : ""), j.note && /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, j.note)), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ React.createElement("button", { onClick: () => commencerEditionJour(j) }, /* @__PURE__ */ React.createElement(EditIcon, { size: 15, color: COLORS.accent })), /* @__PURE__ */ React.createElement("button", { onClick: () => supprimerJour(j.id) }, /* @__PURE__ */ React.createElement(TrashIcon, { color: COLORS.loss }))));
+  }))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between mb-3" }, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium" }, "🎓 Historique Formation"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, joursPris.filter(function(j) {
+    return j.type === "Formation";
+  }).length, " entrée(s)")), /* @__PURE__ */ React.createElement("div", { className: "space-y-1" }, joursPris.filter(function(j) {
+    return j.type === "Formation";
+  }).length === 0 && /* @__PURE__ */ React.createElement("p", { className: "text-sm text-stone-400" }, "Aucune formation saisie."), joursPris.filter(function(j) {
+    return j.type === "Formation";
+  }).map(function(j, i) {
+    return /* @__PURE__ */ React.createElement(Row, { key: j.id, index: i }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "font-mono" }, formatDateFR(j.date), Number(j.duree) === 0.5 ? " (1/2 j)" : ""), j.note && /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, j.note)), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ React.createElement("button", { onClick: () => commencerEditionJour(j) }, /* @__PURE__ */ React.createElement(EditIcon, { size: 15, color: COLORS.accent })), /* @__PURE__ */ React.createElement("button", { onClick: () => supprimerJour(j.id) }, /* @__PURE__ */ React.createElement(TrashIcon, { color: COLORS.loss }))));
+  }))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between mb-3" }, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium" }, editingJourId ? "Modifier une entrée" : "Poser une absence"), /* @__PURE__ */ React.createElement("div", { className: "flex gap-2" }, /* @__PURE__ */ React.createElement("button", { onClick: () => exporterICS(joursPris), disabled: joursPris.length === 0, className: "text-xs flex items-center gap-1 rounded-full px-3 py-1.5 disabled:opacity-40", style: { backgroundColor: COLORS.stripe } }, /* @__PURE__ */ React.createElement(DownloadIcon, { size: 13 }), " .ics"), /* @__PURE__ */ React.createElement("button", { onClick: () => exporterExcelRTTCP(joursPris), disabled: joursPris.length === 0, className: "text-xs flex items-center gap-1 rounded-full px-3 py-1.5 disabled:opacity-40 text-white", style: { backgroundColor: COLORS.accent } }, /* @__PURE__ */ React.createElement(DownloadIcon, { size: 13 }), " Excel"))), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-500 mb-1" }, "Type d'absence"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-2 mb-3" }, /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      type: "button",
+      onClick: () => setForm({ ...form, type: "CP" }),
+      className: "py-2 rounded-lg text-sm",
+      style: { backgroundColor: form.type === "CP" ? COLORS.ink : COLORS.stripe, color: form.type === "CP" ? "#fff" : COLORS.ink }
+    },
+    "🌴 Congés Payés"
+  ), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      type: "button",
+      onClick: () => setForm({ ...form, type: "RTT" }),
+      className: "py-2 rounded-lg text-sm",
+      style: { backgroundColor: form.type === "RTT" ? COLORS.ink : COLORS.stripe, color: form.type === "RTT" ? "#fff" : COLORS.ink }
+    },
+    "📅 RTT"
+  ), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      type: "button",
+      onClick: () => setForm({ ...form, type: "PontOffert" }),
+      className: "py-2 rounded-lg text-sm",
+      style: { backgroundColor: form.type === "PontOffert" ? COLORS.ink : COLORS.stripe, color: form.type === "PontOffert" ? "#fff" : COLORS.ink }
+    },
+    "🌉 Pont offert"
+  ), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      type: "button",
+      onClick: () => setForm({ ...form, type: "Formation" }),
+      className: "py-2 rounded-lg text-sm",
+      style: { backgroundColor: form.type === "Formation" ? COLORS.ink : COLORS.stripe, color: form.type === "Formation" ? "#fff" : COLORS.ink }
+    },
+    "🎓 Formation"
+  )), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mb-3" }, "Pont offert 🌉 et Formation 🎓 : offerts par l'employeur, sans quota ni impact sur le solde RTT/CP, mais déduits du décompte TR du mois suivant (jour non travaillé). Week-ends et jours fériés exclus automatiquement des TR."), !editingJourId && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-500 mb-1" }, "Mode de sélection"), /* @__PURE__ */ React.createElement("div", { className: "flex gap-2 mb-3" }, /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      type: "button",
+      onClick: () => setModeSelection("jours"),
+      className: "flex-1 py-2 rounded-lg text-xs",
+      style: { backgroundColor: modeSelection === "jours" ? COLORS.ink : COLORS.stripe, color: modeSelection === "jours" ? "#fff" : COLORS.ink }
+    },
+    "📅 Jour(s)"
+  ), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      type: "button",
+      onClick: () => setModeSelection("semaine"),
+      className: "flex-1 py-2 rounded-lg text-xs",
+      style: { backgroundColor: modeSelection === "semaine" ? COLORS.ink : COLORS.stripe, color: modeSelection === "semaine" ? "#fff" : COLORS.ink }
+    },
+    "🗓️ Semaine"
+  ), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      type: "button",
+      onClick: () => setModeSelection("periode"),
+      className: "flex-1 py-2 rounded-lg text-xs",
+      style: { backgroundColor: modeSelection === "periode" ? COLORS.ink : COLORS.stripe, color: modeSelection === "periode" ? "#fff" : COLORS.ink }
+    },
+    "📆 Période"
+  ))), /* @__PURE__ */ React.createElement("form", { onSubmit: submit, className: "grid grid-cols-2 gap-2" }, editingJourId && /* @__PURE__ */ React.createElement("label", { className: "block col-span-2" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs text-stone-500" }, "Date"), /* @__PURE__ */ React.createElement("input", { type: "date", value: form.date, onChange: (e) => setForm({ ...form, date: e.target.value }), className: "font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" })), !editingJourId && modeSelection === "jours" && /* @__PURE__ */ React.createElement("div", { className: "col-span-2" }, /* @__PURE__ */ React.createElement("div", { className: "flex gap-2 mb-2" }, /* @__PURE__ */ React.createElement("input", { type: "date", value: dateAAjouter, onChange: (e) => setDateAAjouter(e.target.value), className: "font-mono flex-1 border border-stone-300 rounded-lg px-3 py-2 text-sm" }), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: ajouterDateChoisie, className: "px-4 rounded-lg text-sm text-white", style: { backgroundColor: COLORS.ink } }, "+")), joursChoisis.length > 0 && /* @__PURE__ */ React.createElement("div", { className: "flex flex-wrap gap-1.5 mb-1" }, joursChoisis.map(function(d) {
+    return /* @__PURE__ */ React.createElement("span", { key: d, className: "text-xs font-mono rounded-full px-2 py-1 flex items-center gap-1", style: { backgroundColor: COLORS.stripe } }, formatDateFR(d), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => retirerDateChoisie(d), style: { color: COLORS.loss } }, "×"));
+  }))), !editingJourId && modeSelection === "semaine" && /* @__PURE__ */ React.createElement("label", { className: "block col-span-2" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs text-stone-500" }, "N'importe quel jour de la semaine visée"), /* @__PURE__ */ React.createElement("input", { type: "date", value: form.date, onChange: (e) => setForm({ ...form, date: e.target.value }), className: "font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" })), !editingJourId && modeSelection === "periode" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("label", { className: "block" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs text-stone-500" }, "Du"), /* @__PURE__ */ React.createElement("input", { type: "date", value: form.date, onChange: (e) => setForm({ ...form, date: e.target.value }), className: "font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" })), /* @__PURE__ */ React.createElement("label", { className: "block" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs text-stone-500" }, "Au"), /* @__PURE__ */ React.createElement("input", { type: "date", value: form.dateFin, onChange: (e) => setForm({ ...form, dateFin: e.target.value }), className: "font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" }))), /* @__PURE__ */ React.createElement("select", { value: form.duree, onChange: (e) => setForm({ ...form, duree: e.target.value }), className: "border border-stone-300 rounded-lg px-3 py-2 text-sm" }, /* @__PURE__ */ React.createElement("option", { value: "1" }, "Journée entière"), /* @__PURE__ */ React.createElement("option", { value: "0.5" }, "Demi-journée")), /* @__PURE__ */ React.createElement("input", { type: "text", placeholder: "Note (optionnel)", value: form.note, onChange: (e) => setForm({ ...form, note: e.target.value }), className: "border border-stone-300 rounded-lg px-3 py-2 text-sm" }), joursPlage.length > 0 && /* @__PURE__ */ React.createElement("div", { className: "col-span-2 rounded-lg p-3 text-xs", style: { backgroundColor: COLORS.stripe } }, /* @__PURE__ */ React.createElement("p", null, joursPlage.length, " jour(s) × ", form.duree === "0.5" ? "1/2" : "1", " = ", /* @__PURE__ */ React.createElement("span", { className: "font-mono font-semibold" }, formatJours(dureeTotale), " j"), " déduit(s)"), soldeConcerne && /* @__PURE__ */ React.createElement("p", { className: "mt-1" }, "Nouveau solde ", form.type, " : ", /* @__PURE__ */ React.createElement("span", { className: "font-mono font-semibold", style: { color: soldeNegatif ? COLORS.loss : COLORS.gain } }, formatJours(soldeApres), " j")), /* @__PURE__ */ React.createElement("p", { className: "mt-1 text-stone-500" }, "Impact TR estimé : −", joursPlage.length, " jour(s) travaillé(s) sur le(s) mois concerné(s)")), blackoutsPlage.length > 0 && /* @__PURE__ */ React.createElement(Warning, null, blackoutsPlage.length > 1 ? blackoutsPlage.length + " jours tombent" : "Cette date tombe", " dans une période bloquée", blackoutsPlage[0].label ? " : " + blackoutsPlage[0].label : ""), tropConsecutifs && /* @__PURE__ */ React.createElement(Warning, null, "Dépasse ", maxRtt, " RTT consécutifs"), chevauchements.length > 0 && /* @__PURE__ */ React.createElement(Warning, null, "Chevauchement — bloqué. ", chevauchements.map(function(d) {
+    const existant = joursPris.filter(function(j) {
+      return j.date === d && (!editingJourId || j.id !== editingJourId);
+    })[0];
+    return formatDateFR(d) + (existant ? " (" + existant.type + " déjà saisi)" : "");
+  }).join(", "), ". Modifie ou supprime cette entrée dans l'historique ci-dessus si besoin."), soldeNegatif && /* @__PURE__ */ React.createElement(Warning, null, "Solde ", form.type, " insuffisant (", formatJours(soldeActuelType), " j disponibles) — bloqué"), /* @__PURE__ */ React.createElement("div", { className: "col-span-2 flex gap-2" }, /* @__PURE__ */ React.createElement("button", { type: "submit", disabled: blocageSubmit || !editingJourId && joursPlage.length === 0, className: "flex-1 text-white rounded-lg py-2 text-sm font-medium disabled:opacity-40", style: { backgroundColor: COLORS.ink } }, editingJourId ? "Enregistrer" : "Ajouter"), editingJourId && /* @__PURE__ */ React.createElement("button", { type: "button", onClick: annulerEditionJour, className: "px-4 rounded-lg text-sm", style: { backgroundColor: COLORS.stripe, color: COLORS.ink } }, "Annuler")))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between mb-3" }, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium" }, "🗄️ Archives"), /* @__PURE__ */ React.createElement("button", { onClick: () => ajouterArchiveConges(anneeCourante), className: "text-xs flex items-center gap-1 rounded-full px-3 py-1.5", style: { backgroundColor: COLORS.stripe } }, archiveExistante ? "Réarchiver " + anneeCourante : "Archiver " + anneeCourante)), /* @__PURE__ */ React.createElement("div", { className: "space-y-1" }, archivesConges.length === 0 && /* @__PURE__ */ React.createElement("p", { className: "text-sm text-stone-400" }, "Aucune année archivée."), archivesConges.map(function(a, i) {
+    const ouvert = archiveOuverte === a.id;
+    return /* @__PURE__ */ React.createElement("div", { key: a.id, className: "rounded-lg overflow-hidden", style: { backgroundColor: i % 2 === 1 ? COLORS.stripe : "transparent" } }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between px-2 py-1.5 cursor-pointer", onClick: () => setArchiveOuverte(ouvert ? null : a.id) }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "font-mono" }, a.annee, " — RTT ", formatJours(a.rttPris), "j · CP ", formatJours(a.cpPris), "j pris"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, "Archivée le ", formatDateFR(a.dateArchivage))), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2", onClick: (ev) => ev.stopPropagation() }, /* @__PURE__ */ React.createElement("button", { onClick: () => supprimerArchiveConges(a.id) }, /* @__PURE__ */ React.createElement(TrashIcon, { color: COLORS.loss })), /* @__PURE__ */ React.createElement("span", { className: "text-xs text-stone-400" }, ouvert ? "▲" : "▼"))), ouvert && /* @__PURE__ */ React.createElement("div", { className: "px-2 pb-2" }, /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-500" }, "Solde RTT au moment de l'archivage : ", /* @__PURE__ */ React.createElement("span", { className: "font-mono" }, formatJours(a.soldeRTT), " j"), " · Solde CP : ", /* @__PURE__ */ React.createElement("span", { className: "font-mono" }, formatJours(a.soldeCP), " j")), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mt-1" }, (a.joursPris || []).length, " entrée(s) d'absence archivée(s) pour ", a.annee, ".")));
+  })), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mt-3" }, "Archiver conserve un instantané des RTT/CP pris et des soldes pour ", anneeCourante, ", même si tu ajoutes ou modifies des absences plus tard.")), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 px-1" }, "RTT calculé sur l'année civile en cours ; CP sur le cycle d'usage (1er juin → 31 mai par défaut). Suivi en temps réel, contrairement au bulletin officiel qui a un mois de décalage."));
+}
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null, info: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  componentDidCatch(error, info) {
+    this.setState({ info });
+    console.error("Erreur applicative :", error, info);
+  }
+  render() {
+    if (this.state.error) {
+      const err = this.state.error;
+      const info = this.state.info;
+      return /* @__PURE__ */ React.createElement("div", { style: { minHeight: "100vh", backgroundColor: "#F7F8F4", padding: "20px", fontFamily: "ui-sans-serif, system-ui, sans-serif", color: "#1F2B27" } }, /* @__PURE__ */ React.createElement("h2", { style: { margin: "0 0 8px 0" } }, "Une erreur est survenue"), /* @__PURE__ */ React.createElement("p", { style: { color: "#78716C", fontSize: "14px" } }, "Copie le texte ci-dessous pour signaler le problème précisément."), /* @__PURE__ */ React.createElement("pre", { style: { whiteSpace: "pre-wrap", wordBreak: "break-word", backgroundColor: "#fff", border: "1px solid #E7E5E4", padding: "12px", borderRadius: "8px", fontSize: "12px", overflow: "auto", color: "#9C4A3C" } }, String(err && err.message ? err.message : err), "\n\n", String(err && err.stack ? err.stack : ""), info && info.componentStack ? "\n\nComposant :\n" + info.componentStack : ""), /* @__PURE__ */ React.createElement("button", { onClick: () => window.location.reload(), style: { marginTop: "12px", padding: "8px 16px", backgroundColor: "#1F2B27", color: "#fff", border: "none", borderRadius: "8px", cursor: "pointer" } }, "Recharger"));
+    }
+    return this.props.children;
+  }
+}
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(/* @__PURE__ */ React.createElement(ErrorBoundary, null, /* @__PURE__ */ React.createElement(App, null)));
+
+</script>
+</body>
+</html>
