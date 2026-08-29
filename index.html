@@ -32,6 +32,7 @@
   .grid-cols-3 { grid-template-columns: repeat(3, minmax(0,1fr)); }
   .grid-cols-4 { grid-template-columns: repeat(4, minmax(0,1fr)); }
   .grid-cols-5 { grid-template-columns: repeat(5, minmax(0,1fr)); }
+  .grid-cols-6 { grid-template-columns: repeat(6, minmax(0,1fr)); }
   .col-span-2 { grid-column: span 2 / span 2; }
   .gap-1 { gap: .25rem; } .gap-1\.5 { gap: .375rem; } .gap-2 { gap: .5rem; } .gap-3 { gap: .75rem; } .gap-y-1\.5 { row-gap: .375rem; }
   .p-2{padding:.5rem}.p-3{padding:.75rem}.p-4{padding:1rem}.p-5{padding:1.25rem}
@@ -146,10 +147,30 @@ const DEFAULT_STATE = {
     abonnementTransportMensuel: 56,
     remboursementTransportPct: 50,
     abonnementTransportSuivant: 56,
-    abonnementTransportDateEffet: "2026-12-01"
+    abonnementTransportDateEffet: "2026-12-01",
+    situationFamiliale: "couple",
+    nombreEnfantsCharge: 0,
+    enfantsCollege: 0,
+    enfantsLycee: 0,
+    enfantsSuperieur: 0,
+    cotisationSyndicaleNicolas: 0,
+    baremeSeuil1: 11600,
+    baremeSeuil2: 29579,
+    baremeSeuil3: 84577,
+    baremeSeuil4: 181917,
+    baremeTaux2: 11,
+    baremeTaux3: 30,
+    baremeTaux4: 41,
+    baremeTaux5: 45,
+    decoteSeuilSeul: 1982,
+    decoteSeuilCouple: 3277,
+    decoteConstanteSeul: 897,
+    decoteConstanteCouple: 1483,
+    decoteTauxPct: 45.25,
+    plafondDemiPart: 1807
   },
   personnes: [
-    { id: "nicolas", nom: "Nicolas", dateEntree: "2019-07-01", interessementParAnnee: {}, entreesMensuelles: {
+    { id: "nicolas", nom: "Nicolas", dateEntree: "2019-07-01", inclusFoyerFiscal: true, interessementParAnnee: {}, entreesMensuelles: {
       "2025-07": { salaire: 2261.76, netFiscal: 2109.67, ps: 40.08, netPaye: 1779.56 },
       "2025-08": { salaire: 2261.76, netFiscal: 2101.8, ps: 39.93, netPaye: 1772.29 },
       "2025-11": { salaire: 2261.76, netFiscal: 3976.3, ps: 75.55, netPaye: 3522.18, trManuel: 16 },
@@ -158,9 +179,9 @@ const DEFAULT_STATE = {
       "2026-05": { salaire: 2284.48, netFiscal: 3087.42, ps: 67.92, netPaye: 2677.83 },
       "2026-06": { salaire: 2284.48, netFiscal: 2123.73, ps: 46.72, netPaye: 1805.34, trManuel: 12 }
     } },
-    { id: "sarah", nom: "Sarah", dateEntree: "", entreesMensuelles: {} },
-    { id: "simon", nom: "Simon", dateEntree: "", entreesMensuelles: {} },
-    { id: "nelly", nom: "Nelly", dateEntree: "", entreesMensuelles: {} }
+    { id: "sarah", nom: "Sarah", dateEntree: "", inclusFoyerFiscal: true, entreesMensuelles: {} },
+    { id: "simon", nom: "Simon", dateEntree: "", inclusFoyerFiscal: false, entreesMensuelles: {} },
+    { id: "nelly", nom: "Nelly", dateEntree: "", inclusFoyerFiscal: false, entreesMensuelles: {} }
   ],
   joursPris: [],
   periodesBloquees: [],
@@ -617,6 +638,95 @@ function appliquerPrimes(estimation, config) {
     ratioNetSurBrutImplicite: round2(ratioNetSurBrutImplicite * 100),
     totalGeneral: round2(estimation.totalGeneral + primeVacances + primeNoel)
   };
+}
+function totauxPersonneAnnee(personne, annee, joursPris, config) {
+  let netFiscal = 0, ps = 0, netPaye = 0, salaire = 0;
+  if (personne.id === "nicolas") {
+    const estimation = appliquerPrimes(estimerAnnee(personne, annee, joursPris || [], config), config);
+    estimation.moisDetail.forEach(function(m) {
+      netFiscal += Number(m.netFiscalEstime) || 0;
+      ps += Number(m.pasEstime) || 0;
+      netPaye += Number(m.netEstime) || 0;
+      salaire += Number(m.salaireBase) || 0;
+    });
+  } else {
+    for (let mois = 1; mois <= 12; mois++) {
+      const cle = annee + "-" + String(mois).padStart(2, "0");
+      const e = (personne.entreesMensuelles || {})[cle];
+      if (e) {
+        netFiscal += Number(e.netFiscal) || 0;
+        ps += Number(e.ps) || 0;
+        netPaye += Number(e.netPaye) || 0;
+        salaire += Number(e.salaire) || 0;
+      }
+    }
+  }
+  return { netFiscal: round2(netFiscal), ps: round2(ps), netPaye: round2(netPaye), salaire: round2(salaire) };
+}
+function calculTranches(revenuParPart, config) {
+  const r = Math.max(0, Number(revenuParPart) || 0);
+  const s1 = Number(config.baremeSeuil1) || 0;
+  const s2 = Number(config.baremeSeuil2) || 0;
+  const s3 = Number(config.baremeSeuil3) || 0;
+  const s4 = Number(config.baremeSeuil4) || 0;
+  const t2 = Number(config.baremeTaux2) || 0;
+  const t3 = Number(config.baremeTaux3) || 0;
+  const t4 = Number(config.baremeTaux4) || 0;
+  const t5 = Number(config.baremeTaux5) || 0;
+  let impot = 0;
+  if (r > s1) impot += (Math.min(r, s2) - s1) * t2 / 100;
+  if (r > s2) impot += (Math.min(r, s3) - s2) * t3 / 100;
+  if (r > s3) impot += (Math.min(r, s4) - s3) * t4 / 100;
+  if (r > s4) impot += (r - s4) * t5 / 100;
+  return impot;
+}
+function nombreDeParts(situationFamiliale, nombreEnfants) {
+  const partsAdultes = situationFamiliale === "couple" ? 2 : 1;
+  const n = Math.max(0, Number(nombreEnfants) || 0);
+  let partsEnfants = 0;
+  if (n >= 1) partsEnfants += 0.5;
+  if (n >= 2) partsEnfants += 0.5;
+  if (n >= 3) partsEnfants += n - 2;
+  return { partsAdultes, partsEnfants: round2(partsEnfants), partsTotal: round2(partsAdultes + partsEnfants) };
+}
+function calculerImpotFoyer(revenuImposable, situationFamiliale, nombreEnfants, config) {
+  const revenu = Math.max(0, Number(revenuImposable) || 0);
+  const parts = nombreDeParts(situationFamiliale, nombreEnfants);
+  const partsAdultes = parts.partsAdultes, partsEnfants = parts.partsEnfants, partsTotal = parts.partsTotal;
+  const impotSansEnfants = round2(calculTranches(revenu / partsAdultes, config) * partsAdultes);
+  const impotAvecEnfants = round2(calculTranches(revenu / partsTotal, config) * partsTotal);
+  const avantageQF = round2(Math.max(0, impotSansEnfants - impotAvecEnfants));
+  const nbDemiParts = round2(partsEnfants / 0.5);
+  const plafond = round2(nbDemiParts * (Number(config.plafondDemiPart) || 0));
+  let impotBrut = impotAvecEnfants;
+  let plafonnementApplique = false;
+  if (partsEnfants > 0 && avantageQF > plafond) {
+    impotBrut = round2(impotSansEnfants - plafond);
+    plafonnementApplique = true;
+  }
+  const estCouple = situationFamiliale === "couple";
+  const seuilDecote = Number(estCouple ? config.decoteSeuilCouple : config.decoteSeuilSeul) || 0;
+  const constanteDecote = Number(estCouple ? config.decoteConstanteCouple : config.decoteConstanteSeul) || 0;
+  const tauxDecote = Number(config.decoteTauxPct) || 0;
+  let decote = 0;
+  if (impotBrut > 0 && impotBrut < seuilDecote) {
+    decote = Math.min(impotBrut, Math.max(0, round2(constanteDecote - impotBrut * tauxDecote / 100)));
+  }
+  const impotApresDecote = round2(Math.max(0, impotBrut - decote));
+  return { revenu, partsAdultes, partsEnfants, partsTotal, impotSansEnfants, impotAvecEnfants, avantageQF, plafond, plafonnementApplique, impotBrut, seuilDecote, decote, impotApresDecote };
+}
+function calculerReductionSyndicale(cotisationAnnuelle, revenuFiscalIndividuel) {
+  const cotisation = Math.max(0, Number(cotisationAnnuelle) || 0);
+  const plafondBase = round2(Math.max(0, Number(revenuFiscalIndividuel) || 0) * 0.01);
+  const baseRetenue = round2(Math.min(cotisation, plafondBase));
+  const credit = round2(baseRetenue * 0.66);
+  return { cotisation, plafondBase, baseRetenue, credit };
+}
+function calculerReductionScolarite(nbCollege, nbLycee, nbSuperieur) {
+  const college = round2(Math.max(0, Number(nbCollege) || 0) * 61);
+  const lycee = round2(Math.max(0, Number(nbLycee) || 0) * 153);
+  const superieur = round2(Math.max(0, Number(nbSuperieur) || 0) * 183);
+  return { college, lycee, superieur, total: round2(college + lycee + superieur) };
 }
 function archiverAnnee(estimation) {
   let texte = "ARCHIVE " + estimation.annee + " — Estimation salariale annuelle — Nicolas Jutge\n";
@@ -1266,6 +1376,7 @@ function App() {
     { id: "salaires", label: "Salaires" },
     { id: "estimation", label: "Estimation" },
     { id: "primes", label: "Primes" },
+    { id: "impots", label: "Impôts" },
     { id: "conges", label: "RTT & CP" }
   ];
   return /* @__PURE__ */ React.createElement("div", { className: "min-h-screen pb-24", style: { backgroundColor: COLORS.paper, color: COLORS.ink } }, /* @__PURE__ */ React.createElement("header", { className: "px-5 pt-6 pb-5", style: { backgroundColor: COLORS.ink, color: "#fff" } }, /* @__PURE__ */ React.createElement("div", { className: "flex items-start justify-between" }, /* @__PURE__ */ React.createElement("div", { className: "flex items-start gap-3" }, /* @__PURE__ */ React.createElement("div", { className: "rounded-xl p-2 shrink-0 flex items-center justify-center", style: { backgroundColor: "#2A3A34", width: 36, height: 36 } }, /* @__PURE__ */ React.createElement("span", { style: { color: COLORS.gain, fontSize: 18, fontWeight: 600 } }, "€")), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "text-xs uppercase tracking-widest", style: { color: "#8FA69B" } }, "Suivi personnel"), /* @__PURE__ */ React.createElement("h1", { className: "font-display text-2xl mt-1", style: { fontWeight: 600 } }, "Salaire, RTT & Congés"), /* @__PURE__ */ React.createElement("p", { className: "text-sm mt-1", style: { color: "#B7C4BC" } }, "Nicolas Jutge — Conseiller Assurance Réseau, Classe 3"))), /* @__PURE__ */ React.createElement("div", { className: "flex flex-col items-end gap-1.5 shrink-0" }, /* @__PURE__ */ React.createElement("button", { onClick: () => setShowSync(!showSync), className: "text-xs", style: { color: "#8FA69B" } }, binConfig ? syncStatus === "error" ? "sync ⚠" : "sync ✓" : "synchroniser"), /* @__PURE__ */ React.createElement("button", { onClick: reinitialiser, className: "text-xs", style: { color: "#8FA69B" } }, confirmReset ? "confirmer ?" : "réinitialiser")))), /* @__PURE__ */ React.createElement("div", { className: "px-4 pt-3" }, /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, binConfig ? "Synchronisé avec ton bin JSONBin (+ copie locale sur cet appareil)." : "Données enregistrées localement sur cet appareil et ce navigateur."), showSync && /* @__PURE__ */ React.createElement("div", { className: "mt-2" }, /* @__PURE__ */ React.createElement(SyncPanel, { binConfig, onConnect: connecterSync, onDisconnect: deconnecterSync, onImport: appliquerImport, currentState: state, onClose: () => setShowSync(false) }))), /* @__PURE__ */ React.createElement("main", { className: "px-4 pt-5 max-w-xl mx-auto" }, tab === "dashboard" && /* @__PURE__ */ React.createElement(Dashboard, { dernierSalaire, soldeRTT, soldeCP, prochaines, today }), tab === "salaires" && /* @__PURE__ */ React.createElement(
@@ -1306,6 +1417,16 @@ function App() {
       ajouterArchivePrimes,
       supprimerArchivePrimes
     }
+  ), tab === "impots" && /* @__PURE__ */ React.createElement(
+    ImpotsTab,
+    {
+      personnes: state.personnes,
+      updatePersonneChamp,
+      config: state.config,
+      updateConfig,
+      joursPris: state.joursPris || [],
+      anneeActuelle
+    }
   ), tab === "conges" && /* @__PURE__ */ React.createElement(
     CongesTab,
     {
@@ -1329,7 +1450,7 @@ function App() {
       ajouterArchiveConges,
       supprimerArchiveConges
     }
-  )), /* @__PURE__ */ React.createElement("nav", { className: "fixed bottom-0 left-0 right-0 bg-white border-t border-stone-200" }, /* @__PURE__ */ React.createElement("div", { className: "max-w-xl mx-auto grid grid-cols-5" }, tabs.map(function(t) {
+  )), /* @__PURE__ */ React.createElement("nav", { className: "fixed bottom-0 left-0 right-0 bg-white border-t border-stone-200" }, /* @__PURE__ */ React.createElement("div", { className: "max-w-xl mx-auto grid grid-cols-6" }, tabs.map(function(t) {
     return /* @__PURE__ */ React.createElement("button", { key: t.id, onClick: () => setTab(t.id), className: "py-3 text-xs font-medium", style: { color: tab === t.id ? COLORS.ink : "#A8A29E" } }, t.label);
   }))), saving && /* @__PURE__ */ React.createElement("div", { className: "fixed top-4 right-4 text-white text-xs px-3 py-1.5 rounded-full shadow-lg", style: { backgroundColor: COLORS.ink } }, "Enregistrement…"));
 }
@@ -1556,6 +1677,42 @@ function EstimationTab({ nicolas, joursPris, config, updateConfig, archives, ajo
       return s + Number(j.duree);
     }, 0), "j")));
   })), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, "Archiver conserve les paramètres (taux, valorisation) utilisés à ce moment, même si tu les modifies plus tard.")));
+}
+function ImpotsTab({ personnes, updatePersonneChamp, config, updateConfig, joursPris, anneeActuelle }) {
+  const [annee, setAnnee] = useState(anneeActuelle);
+  const estInclus = function(p) {
+    return p.inclusFoyerFiscal !== false;
+  };
+  const totauxParPersonne = personnes.map(function(p) {
+    return { personne: p, totaux: totauxPersonneAnnee(p, annee, joursPris, config) };
+  });
+  const inclus = totauxParPersonne.filter(function(x) {
+    return estInclus(x.personne);
+  });
+  const revenuFoyer = round2(inclus.reduce(function(s, x) {
+    return s + x.totaux.netFiscal;
+  }, 0));
+  const pasFoyer = round2(inclus.reduce(function(s, x) {
+    return s + x.totaux.ps;
+  }, 0));
+  const nicolasEntry = totauxParPersonne.find(function(x) {
+    return x.personne.id === "nicolas";
+  });
+  const nicolasNetFiscal = nicolasEntry ? nicolasEntry.totaux.netFiscal : 0;
+  const situationFamiliale = config.situationFamiliale || "couple";
+  const nombreEnfants = Number(config.nombreEnfantsCharge) || 0;
+  const parts = nombreDeParts(situationFamiliale, nombreEnfants);
+  const impot = calculerImpotFoyer(revenuFoyer, situationFamiliale, nombreEnfants, config);
+  const reducSynd = calculerReductionSyndicale(config.cotisationSyndicaleNicolas, nicolasNetFiscal);
+  const reducScol = calculerReductionScolarite(config.enfantsCollege, config.enfantsLycee, config.enfantsSuperieur);
+  const totalReductions = round2(reducSynd.credit + reducScol.total);
+  const impotApresScolarite = round2(Math.max(0, impot.impotApresDecote - reducScol.total));
+  const impotNet = round2(impotApresScolarite - reducSynd.credit);
+  const montantAPayer = round2(impotNet - pasFoyer);
+  const sommeScolarite = (Number(config.enfantsCollege) || 0) + (Number(config.enfantsLycee) || 0) + (Number(config.enfantsSuperieur) || 0);
+  return /* @__PURE__ */ React.createElement("div", { className: "space-y-4" }, /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between" }, /* @__PURE__ */ React.createElement("button", { onClick: () => setAnnee(annee - 1), className: "px-3 py-1 text-sm rounded-lg", style: { backgroundColor: COLORS.stripe } }, "◀"), /* @__PURE__ */ React.createElement("p", { className: "font-display text-lg" }, "Impôts ", annee), /* @__PURE__ */ React.createElement("button", { onClick: () => setAnnee(annee + 1), className: "px-3 py-1 text-sm rounded-lg", style: { backgroundColor: COLORS.stripe } }, "▶")), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mt-2" }, "Estimation basée sur le barème de l'impôt 2026 (revenus ", annee, "), à jour au 29/08/2026 — décote, quotient familial et plafonnement inclus. À vérifier avec le simulateur officiel impots.gouv.fr avant toute décision, notamment si ta situation a changé depuis.")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium mb-1" }, "Revenu net fiscal par personne — ", annee), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mb-3" }, "Coche les personnes à inclure dans le revenu du foyer fiscal (déclaration commune)."), /* @__PURE__ */ React.createElement("div", { className: "space-y-1" }, totauxParPersonne.map(function(x, i) {
+    return /* @__PURE__ */ React.createElement(Row, { key: x.personne.id, index: i }, /* @__PURE__ */ React.createElement("label", { className: "flex items-center gap-2 flex-1" }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: estInclus(x.personne), onChange: (e) => updatePersonneChamp(x.personne.id, { inclusFoyerFiscal: e.target.checked }) }), /* @__PURE__ */ React.createElement("span", null, x.personne.nom || "(sans nom)")), /* @__PURE__ */ React.createElement("span", { className: "font-mono text-xs text-right whitespace-nowrap" }, formatEUR(x.totaux.netFiscal), " · PAS ", formatEUR(x.totaux.ps)));
+  })), /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between mt-2 pt-2 border-t border-stone-200 px-1" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs font-semibold" }, "Total foyer fiscal coché"), /* @__PURE__ */ React.createElement("span", { className: "font-mono text-xs font-semibold text-right" }, formatEUR(revenuFoyer), " · PAS ", formatEUR(pasFoyer)))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium mb-3" }, "Situation familiale & parts"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-3" }, /* @__PURE__ */ React.createElement("label", { className: "block" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs text-stone-500" }, "Situation"), /* @__PURE__ */ React.createElement("select", { value: situationFamiliale, onChange: (e) => updateConfig({ situationFamiliale: e.target.value }), className: "w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" }, /* @__PURE__ */ React.createElement("option", { value: "couple" }, "Marié(e) / Pacsé(e)"), /* @__PURE__ */ React.createElement("option", { value: "seul" }, "Célibataire / divorcé(e) / veuf(ve)"))), /* @__PURE__ */ React.createElement(NumberField, { label: "Enfants à charge (quotient familial)", value: config.nombreEnfantsCharge, onChange: (v) => updateConfig({ nombreEnfantsCharge: v }), step: "1" })), sommeScolarite > nombreEnfants && /* @__PURE__ */ React.createElement("div", { className: "mt-3" }, /* @__PURE__ */ React.createElement(Warning, null, "Le total d'enfants scolarisés saisi plus bas (", sommeScolarite, ") dépasse le nombre d'enfants à charge (", nombreEnfants, ").")), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-3 gap-2 mt-3" }, /* @__PURE__ */ React.createElement(MetricBox, { label: "Parts adultes", value: parts.partsAdultes }), /* @__PURE__ */ React.createElement(MetricBox, { label: "Parts enfants", value: parts.partsEnfants }), /* @__PURE__ */ React.createElement(MetricBox, { label: "Total parts", value: parts.partsTotal, dark: true }))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium mb-1" }, "🏷️ Cotisation syndicale (Nicolas)"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mb-3" }, "Crédit d'impôt de 66 %, plafonné à 1 % du revenu net fiscal de Nicolas (", formatEUR(nicolasNetFiscal), " → plafond ", formatEUR(reducSynd.plafondBase), ")."), /* @__PURE__ */ React.createElement(NumberField, { label: "Cotisation versée en " + annee, value: config.cotisationSyndicaleNicolas, onChange: (v) => updateConfig({ cotisationSyndicaleNicolas: v }), suffix: "€" }), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-2 mt-3" }, /* @__PURE__ */ React.createElement(PrimeBox, { label: "Base retenue", montant: reducSynd.baseRetenue }), /* @__PURE__ */ React.createElement(PrimeBox, { label: "Crédit d'impôt (66%)", montant: reducSynd.credit }))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium mb-1" }, "🎓 Enfants scolarisés"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mb-3" }, "Réduction forfaitaire par enfant scolarisé au 31/12 : 61 € (collège), 153 € (lycée), 183 € (études supérieures)."), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-3 gap-2" }, /* @__PURE__ */ React.createElement(NumberField, { label: "Collège", value: config.enfantsCollege, onChange: (v) => updateConfig({ enfantsCollege: v }), step: "1" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Lycée", value: config.enfantsLycee, onChange: (v) => updateConfig({ enfantsLycee: v }), step: "1" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Supérieur", value: config.enfantsSuperieur, onChange: (v) => updateConfig({ enfantsSuperieur: v }), step: "1" })), /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between mt-3 pt-2 border-t border-stone-200 px-1" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs font-semibold" }, "Total réduction scolarité"), /* @__PURE__ */ React.createElement("span", { className: "font-mono text-xs font-semibold" }, formatEUR(reducScol.total)))), /* @__PURE__ */ React.createElement(Card, { dark: true }, /* @__PURE__ */ React.createElement("p", { className: "text-xs uppercase tracking-wide", style: { color: "#8FA69B" } }, "Impôt sur le revenu — ", annee), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-2 mt-3" }, /* @__PURE__ */ React.createElement(MetricBox, { label: "Revenu imposable foyer", value: formatEUR(impot.revenu), dark: true }), /* @__PURE__ */ React.createElement(MetricBox, { label: "Parts fiscales", value: parts.partsTotal, dark: true }), /* @__PURE__ */ React.createElement(MetricBox, { label: "Impôt brut (barème + QF)", value: formatEUR(impot.impotBrut), dark: true }), /* @__PURE__ */ React.createElement(MetricBox, { label: "Décote", value: "− " + formatEUR(impot.decote), dark: true }), /* @__PURE__ */ React.createElement(MetricBox, { label: "Impôt après décote", value: formatEUR(impot.impotApresDecote), dark: true }), /* @__PURE__ */ React.createElement(MetricBox, { label: "Réductions (scol. + synd.)", value: "− " + formatEUR(totalReductions), dark: true }), /* @__PURE__ */ React.createElement(MetricBox, { label: "Impôt net", value: formatEUR(impotNet), dark: true }), /* @__PURE__ */ React.createElement(MetricBox, { label: "PAS déjà versé (foyer)", value: "− " + formatEUR(pasFoyer), dark: true })), impot.plafonnementApplique && /* @__PURE__ */ React.createElement("p", { className: "text-xs mt-2", style: { color: "#8FA69B" } }, "Plafonnement du quotient familial appliqué (avantage lié aux enfants limité à ", formatEUR(impot.plafond), ")."), /* @__PURE__ */ React.createElement("div", { className: "mt-4 pt-3 border-t", style: { borderColor: "#3A4A44" } }, /* @__PURE__ */ React.createElement("p", { className: "text-xs", style: { color: "#8FA69B" } }, montantAPayer >= 0 ? "Solde restant à payer" : "Excédent à rembourser par l'administration"), /* @__PURE__ */ React.createElement("p", { className: "font-display font-mono text-3xl mt-1", style: { color: montantAPayer >= 0 ? COLORS.loss : COLORS.gain } }, formatEUR(Math.abs(montantAPayer))))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium mb-1" }, "⚙️ Barème & paramètres"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mb-3" }, "Valeurs par défaut = barème applicable aux revenus 2025 (loi de finances 2026). À mettre à jour ici lors de la publication du barème de l'année suivante."), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-3" }, /* @__PURE__ */ React.createElement(NumberField, { label: "Seuil tranche 11 %", value: config.baremeSeuil1, onChange: (v) => updateConfig({ baremeSeuil1: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Seuil tranche 30 %", value: config.baremeSeuil2, onChange: (v) => updateConfig({ baremeSeuil2: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Seuil tranche 41 %", value: config.baremeSeuil3, onChange: (v) => updateConfig({ baremeSeuil3: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Seuil tranche 45 %", value: config.baremeSeuil4, onChange: (v) => updateConfig({ baremeSeuil4: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Plafond avantage / demi-part", value: config.plafondDemiPart, onChange: (v) => updateConfig({ plafondDemiPart: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Taux décote", value: config.decoteTauxPct, onChange: (v) => updateConfig({ decoteTauxPct: v }), suffix: "%" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Décote — seuil célibataire", value: config.decoteSeuilSeul, onChange: (v) => updateConfig({ decoteSeuilSeul: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Décote — constante célibataire", value: config.decoteConstanteSeul, onChange: (v) => updateConfig({ decoteConstanteSeul: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Décote — seuil couple", value: config.decoteSeuilCouple, onChange: (v) => updateConfig({ decoteSeuilCouple: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Décote — constante couple", value: config.decoteConstanteCouple, onChange: (v) => updateConfig({ decoteConstanteCouple: v }), suffix: "€" }))));
 }
 function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifierJour, supprimerJour, periodesBloquees, ajouterPeriode, modifierPeriode, supprimerPeriode, personnes, ajouterPersonne, supprimerPersonne, updatePersonne, conges, today, archivesConges, ajouterArchiveConges, supprimerArchiveConges }) {
   const [form, setForm] = useState({ date: "", dateFin: "", type: "RTT", duree: "1", note: "" });
