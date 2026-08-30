@@ -24,6 +24,8 @@
   .font-mono { font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
   .font-sans { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }
   .block { display: block; } .flex { display: flex; } .grid { display: grid; }
+  .flex > *, .grid > * { min-width: 0; }
+  .min-w-0 { min-width: 0; }
   .flex-1 { flex: 1 1 0%; } .flex-col { flex-direction: column; }
   .items-center { align-items: center; } .items-start { align-items: flex-start; } .items-end { align-items: flex-end; }
   .justify-between { justify-content: space-between; } .justify-center { justify-content: center; }
@@ -966,7 +968,7 @@ function TextDateField({ label, value, onChange }) {
       type: "date",
       value,
       onChange: (e) => onChange(e.target.value),
-      className: "w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1 overflow-hidden focus:outline-none focus:ring-2 focus:ring-stone-400"
+      className: "w-full min-w-0 border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1 overflow-hidden focus:outline-none focus:ring-2 focus:ring-stone-400"
     }
   ));
 }
