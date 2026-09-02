@@ -208,6 +208,12 @@ function parseISO(s) {
 function toLocalISODate(d) {
   return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
 }
+function dernierJourSaisi(joursPris) {
+  if (!joursPris || joursPris.length === 0) return "";
+  return joursPris.reduce(function(max, j) {
+    return j.date > max ? j.date : max;
+  }, joursPris[0].date);
+}
 function formatEUR(n) {
   return (Number(n) || 0).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "\u00A0€";
 }
@@ -1799,7 +1805,9 @@ function ImpotsTab({ personnes, updatePersonneChamp, config, updateConfig, jours
   })), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mt-3" }, "Archiver conserve un instantané du calcul pour ", annee, ", même si tu modifies les paramètres plus tard.")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium mb-1" }, "⚙️ Barème & paramètres"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mb-3" }, "Le barème change chaque année (loi de finances), mais ce fichier est autonome et n'a pas de serveur : il ne peut pas aller le chercher tout seul sur un site officiel (et une extraction automatique serait risquée pour un montant d'impôt si la page source changeait de forme). Demande-moi de le mettre à jour dès qu'une nouvelle loi de finances est promulguée, ou modifie les valeurs ci-dessous à la main."), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-3" }, /* @__PURE__ */ React.createElement(NumberField, { label: "Seuil tranche 11 %", value: config.baremeSeuil1, onChange: (v) => updateConfig({ baremeSeuil1: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Seuil tranche 30 %", value: config.baremeSeuil2, onChange: (v) => updateConfig({ baremeSeuil2: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Seuil tranche 41 %", value: config.baremeSeuil3, onChange: (v) => updateConfig({ baremeSeuil3: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Seuil tranche 45 %", value: config.baremeSeuil4, onChange: (v) => updateConfig({ baremeSeuil4: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Plafond avantage / demi-part", value: config.plafondDemiPart, onChange: (v) => updateConfig({ plafondDemiPart: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Taux décote", value: config.decoteTauxPct, onChange: (v) => updateConfig({ decoteTauxPct: v }), suffix: "%" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Décote — seuil célibataire", value: config.decoteSeuilSeul, onChange: (v) => updateConfig({ decoteSeuilSeul: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Décote — constante célibataire", value: config.decoteConstanteSeul, onChange: (v) => updateConfig({ decoteConstanteSeul: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Décote — seuil couple", value: config.decoteSeuilCouple, onChange: (v) => updateConfig({ decoteSeuilCouple: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Décote — constante couple", value: config.decoteConstanteCouple, onChange: (v) => updateConfig({ decoteConstanteCouple: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Barème calé sur les revenus de l'année", value: config.baremeAnneeReference, onChange: (v) => updateConfig({ baremeAnneeReference: v }), step: "1" }), /* @__PURE__ */ React.createElement(TextDateField, { label: "Vérifié le", value: config.baremeDateMaj, onChange: (v) => updateConfig({ baremeDateMaj: v }) }), /* @__PURE__ */ React.createElement(TextDateField, { label: "Prochain rappel (bannière Accueil)", value: config.rappelBaremeDate, onChange: (v) => updateConfig({ rappelBaremeDate: v }) })), /* @__PURE__ */ React.createElement("div", { className: "mt-3 pt-3 border-t border-stone-200" }, /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mb-2" }, "Pour vérifier toi-même les tranches en vigueur :"), /* @__PURE__ */ React.createElement("a", { href: "https://www.service-public.gouv.fr/particuliers/vosdroits/F1419?lang=fr", target: "_blank", rel: "noopener noreferrer", className: "px-3 py-1.5 rounded-lg text-xs text-white whitespace-nowrap", style: { backgroundColor: COLORS.accent } }, "🔗 Barème officiel"))));
 }
 function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifierJour, supprimerJour, periodesBloquees, ajouterPeriode, modifierPeriode, supprimerPeriode, personnes, ajouterPersonne, supprimerPersonne, updatePersonne, conges, today, archivesConges, ajouterArchiveConges, supprimerArchiveConges }) {
-  const [form, setForm] = useState({ date: "", dateFin: "", type: "RTT", duree: "1", note: "" });
+  const [form, setForm] = useState(function() {
+    return { date: dernierJourSaisi(joursPris), dateFin: "", type: "RTT", duree: "1", note: "" };
+  });
   const [archiveOuverte, setArchiveOuverte] = useState(null);
   const anneeCourante = today.getFullYear();
   const archiveExistante = archivesConges.filter(function(a) {
@@ -1810,7 +1818,9 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifie
   const [editingPeriodeId, setEditingPeriodeId] = useState(null);
   const [modeSelection, setModeSelection] = useState("jours");
   const [joursChoisis, setJoursChoisis] = useState([]);
-  const [dateAAjouter, setDateAAjouter] = useState("");
+  const [dateAAjouter, setDateAAjouter] = useState(function() {
+    return dernierJourSaisi(joursPris);
+  });
   const nicolasP = personnes.filter(function(p) {
     return p.id === "nicolas";
   })[0];
@@ -1850,13 +1860,12 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifie
   }
   function annulerEditionJour() {
     setEditingJourId(null);
-    setForm({ date: "", dateFin: "", type: "RTT", duree: "1", note: "" });
+    setForm({ date: dernierJourSaisi(joursPris), dateFin: "", type: "RTT", duree: "1", note: "" });
     setJoursChoisis([]);
   }
   function ajouterDateChoisie() {
     if (!dateAAjouter) return;
     if (joursChoisis.indexOf(dateAAjouter) === -1) setJoursChoisis([...joursChoisis, dateAAjouter].sort());
-    setDateAAjouter("");
   }
   function retirerDateChoisie(d) {
     setJoursChoisis(joursChoisis.filter(function(x) {
@@ -1866,16 +1875,19 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifie
   function submit(e) {
     e.preventDefault();
     if (blocageSubmit) return;
+    let derniereDateSoumise = form.date;
     if (editingJourId) {
       if (!form.date) return;
       modifierJour(editingJourId, { date: form.date, type: form.type, duree: Number(form.duree), note: form.note });
       setEditingJourId(null);
     } else {
       if (!joursPlage.length) return;
+      derniereDateSoumise = joursPlage[joursPlage.length - 1];
       ajouterJoursPlage(joursPlage, form.type, Number(form.duree), form.note);
       setJoursChoisis([]);
     }
-    setForm({ date: "", dateFin: "", type: form.type, duree: "1", note: "" });
+    setForm({ date: derniereDateSoumise, dateFin: "", type: form.type, duree: "1", note: "" });
+    setDateAAjouter(derniereDateSoumise);
   }
   function commencerEditionPeriode(p) {
     setEditingPeriodeId(p.id);
