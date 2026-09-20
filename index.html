@@ -128,6 +128,9 @@ const DEFAULT_STATE = {
     cpBaseAnnuel: 27,
     cpCycleDebut: "01-01",
     maxRttConsecutifs: 5,
+    blocageSemaineDebut: 15,
+    blocageSemaineFin: 18,
+    blocageLundiApresPont: true,
     primeVacancesPct: 50,
     moisPrimeVacances: 5,
     primeNoelPct: 100,
@@ -196,6 +199,17 @@ const DEFAULT_STATE = {
   ],
   joursPris: [],
   periodesBloquees: [],
+  vacancesScolaires: [
+    { id: "vs-2026-10", label: "Toussaint 2026", depart: "2026-10-17", reprise: "2026-11-02" },
+    { id: "vs-2026-12", label: "Noël 2026", depart: "2026-12-19", reprise: "2027-01-04" },
+    { id: "vs-2027-02", label: "Hiver 2027", depart: "2027-02-20", reprise: "2027-03-08" },
+    { id: "vs-2027-04", label: "Printemps 2027", depart: "2027-04-17", reprise: "2027-05-03" },
+    { id: "vs-2027-07", label: "Été 2027", depart: "2027-07-03", reprise: "2027-09-02" },
+    { id: "vs-2027-10", label: "Toussaint 2027", depart: "2027-10-23", reprise: "2027-11-08" },
+    { id: "vs-2027-12", label: "Noël 2027", depart: "2027-12-18", reprise: "2028-01-03" },
+    { id: "vs-2028-02", label: "Hiver 2028", depart: "2028-02-05", reprise: "2028-02-21" },
+    { id: "vs-2028-04", label: "Printemps 2028", depart: "2028-04-08", reprise: "2028-04-24" }
+  ],
   archives: [],
   archivesSalaires: [],
   archivesPrimes: [],
@@ -278,6 +292,235 @@ function prochainPalier(dateEntreeStr, dateRef) {
 function dansPeriodeBloquee(date, periodes) {
   const found = periodes.filter((p) => p.dateDebut && p.dateFin && date >= p.dateDebut && date <= p.dateFin);
   return found.length ? found[0] : null;
+}
+const NOMS_FERIES = ["Jour de l'An", "Fête du Travail", "Victoire 1945", "Fête nationale", "Assomption", "Toussaint", "Armistice", "Noël", "Lundi de Pâques", "Ascension", "Lundi de Pentecôte"];
+const JOURS_FR = ["di", "lu", "ma", "me", "je", "ve", "sa"];
+function plusJoursISO(iso, n) {
+  const d = parseISO(iso);
+  return toLocalISODate(new Date(d.getFullYear(), d.getMonth(), d.getDate() + n));
+}
+function nomFerie(iso) {
+  const i = joursFeriesFrance(Number(iso.slice(0, 4))).indexOf(iso);
+  return i === -1 ? "" : NOMS_FERIES[i];
+}
+function estJourOuvre(iso) {
+  const js = parseISO(iso).getDay();
+  return js !== 0 && js !== 6 && !nomFerie(iso);
+}
+function dansVacances(iso, vacances) {
+  return (vacances || []).some(function(v) {
+    return v.depart && v.reprise && iso >= v.depart && iso < v.reprise;
+  });
+}
+function vacancesCouvertes(v, existantes) {
+  return joursDansPlage(v.depart, plusJoursISO(v.reprise, -1), true).filter(estJourOuvre).every(function(iso) {
+    return dansVacances(iso, existantes);
+  });
+}
+function nomVacances(departISO) {
+  const m = Number(departISO.slice(5, 7));
+  if (m === 12 || m === 1) return "Noël";
+  if (m === 2 || m === 3) return "Hiver";
+  if (m === 4 || m === 5) return "Printemps";
+  if (m >= 6 && m <= 8) return "Été";
+  if (m === 10 || m === 11) return "Toussaint";
+  return "Vacances";
+}
+function lundiSemaineISO(annee, n) {
+  const jan4 = new Date(annee, 0, 4);
+  return new Date(annee, 0, 4 - (jan4.getDay() + 6) % 7 + 7 * (n - 1));
+}
+function reprisesApresPonts(annee) {
+  const nonOuvre = function(iso) {
+    return !estJourOuvre(iso);
+  };
+  const pont = function(iso) {
+    const av = plusJoursISO(iso, -1), ap = plusJoursISO(iso, 1);
+    return estJourOuvre(iso) && nonOuvre(av) && nonOuvre(ap) && (!!nomFerie(av) || !!nomFerie(ap));
+  };
+  const arret = function(iso) {
+    return nonOuvre(iso) || pont(iso);
+  };
+  const res = [];
+  let iso = plusJoursISO(annee + "-01-01", -7);
+  const fin = plusJoursISO(annee + "-12-31", 7);
+  while (iso <= fin) {
+    if (arret(iso) && !arret(plusJoursISO(iso, -1))) {
+      let e = iso, longueur = 1, premier = nomFerie(iso);
+      while (arret(plusJoursISO(e, 1))) {
+        e = plusJoursISO(e, 1);
+        longueur++;
+        if (!premier) premier = nomFerie(e);
+      }
+      const reprise = plusJoursISO(e, 1);
+      if (longueur >= 4 && parseISO(reprise).getDay() === 1 && reprise.slice(0, 4) === String(annee)) res.push({ date: reprise, label: premier });
+      iso = reprise;
+    } else iso = plusJoursISO(iso, 1);
+  }
+  return res;
+}
+function libelleBlocage(raisons, s1, s2) {
+  const parts = [];
+  if (raisons.sem) parts.push("sem. " + s1 + " à " + s2 + " hors vacances scolaires");
+  const ponts = Object.keys(raisons).filter(function(k) {
+    return k.indexOf("pont:") === 0;
+  }).map(function(k) {
+    return k.slice(5);
+  });
+  if (ponts.length) parts.push("lundi après long pont (" + ponts.join(", ") + ")");
+  return "Auto : " + parts.join(" + ");
+}
+function calculerBlocage(annee, config, vacances) {
+  const s1 = Number(config.blocageSemaineDebut) || 0;
+  const s2 = Math.min(53, Number(config.blocageSemaineFin) || 0);
+  const jours = {};
+  const marquer = function(iso, raison) {
+    jours[iso] = jours[iso] || {};
+    jours[iso][raison] = true;
+  };
+  if (s1 >= 1 && s2 >= s1) {
+    const debut = lundiSemaineISO(annee, s1);
+    for (let k = 0; k < (s2 - s1 + 1) * 7; k++) {
+      const iso = toLocalISODate(new Date(debut.getFullYear(), debut.getMonth(), debut.getDate() + k));
+      if (!dansVacances(iso, vacances)) marquer(iso, "sem");
+    }
+  }
+  if (config.blocageLundiApresPont !== false) {
+    reprisesApresPonts(annee).forEach(function(r) {
+      marquer(r.date, "pont:" + r.label);
+    });
+  }
+  const periodes = [];
+  Object.keys(jours).sort().forEach(function(iso) {
+    const der = periodes[periodes.length - 1];
+    if (der && plusJoursISO(der.dateFin, 1) === iso) {
+      der.dateFin = iso;
+      Object.assign(der.raisons, jours[iso]);
+    } else periodes.push({ dateDebut: iso, dateFin: iso, raisons: Object.assign({}, jours[iso]) });
+  });
+  return periodes.map(function(p) {
+    return { dateDebut: p.dateDebut, dateFin: p.dateFin, auto: annee, label: libelleBlocage(p.raisons, s1, s2) };
+  });
+}
+function normTexte(v) {
+  return String(v == null ? "" : v).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+function couleurCellule(cell) {
+  const st = cell && cell.s;
+  if (!st || st.patternType !== "solid" || !st.fgColor) return "";
+  const f = st.fgColor;
+  if (typeof f.rgb === "string") {
+    const rgb = f.rgb.toUpperCase().slice(-6);
+    return rgb === "FFFFFF" ? "" : rgb;
+  }
+  return f.indexed === 5 || f.indexed === 13 ? "FFFF00" : "";
+}
+function lireCalendrierExcel(data) {
+  if (typeof XLSX === "undefined") throw new Error("Bibliothèque Excel indisponible (connexion ?).");
+  let wb;
+  try {
+    wb = XLSX.read(data, { type: "array", cellStyles: true });
+  } catch (err) {
+    throw new Error("Fichier Excel illisible (attendu : .xlsx).");
+  }
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  if (!ws || !ws["!ref"]) throw new Error("Feuille vide.");
+  const plage = XLSX.utils.decode_range(ws["!ref"]);
+  const cell = function(r, c) {
+    return ws[XLSX.utils.encode_cell({ r, c })];
+  };
+  const val = function(r, c) {
+    const x = cell(r, c);
+    return x ? x.v : void 0;
+  };
+  const moisNorm = MOIS_FR.map(normTexte);
+  const blocs = [];
+  for (let r = plage.s.r; r <= Math.min(plage.e.r, plage.s.r + 15); r++) {
+    for (let c = plage.s.c; c <= plage.e.c; c++) {
+      const i = moisNorm.indexOf(normTexte(val(r, c)));
+      if (i !== -1 && !blocs.some(function(b) {
+        return b.mois === i + 1;
+      })) blocs.push({ mois: i + 1, r, c });
+    }
+  }
+  if (blocs.length < 12) throw new Error("Format non reconnu : il faut les 12 mois en colonnes (modèle Calendarpedia paysage).");
+  let annee = 0;
+  for (let r = plage.s.r; r <= Math.min(plage.e.r, plage.s.r + 3) && !annee; r++) {
+    for (let c = plage.s.c; c <= plage.e.c && !annee; c++) {
+      const m = String(val(r, c) == null ? "" : val(r, c)).match(/\b(20\d\d)\b/);
+      if (m) annee = Number(m[1]);
+    }
+  }
+  if (!annee) {
+    const b1 = blocs.filter(function(b) {
+      return b.mois === 1;
+    })[0];
+    for (let y = 2020; y <= 2040 && !annee; y++) {
+      let ok = 0;
+      for (let k = 1; k <= 7; k++) if (normTexte(val(b1.r + k, b1.c + 1)) === JOURS_FR[new Date(y, 0, k).getDay()]) ok++;
+      if (ok === 7) annee = y;
+    }
+  }
+  if (!annee) throw new Error("Année introuvable dans le calendrier.");
+  const jours = [], espaces = [], surlignes = {};
+  blocs.forEach(function(b) {
+    for (let k = 1; k <= 31; k++) {
+      if (Number(val(b.r + k, b.c)) !== k) break;
+      const d = new Date(annee, b.mois - 1, k);
+      if (d.getMonth() !== b.mois - 1) break;
+      const iso = toLocalISODate(d);
+      const brut = val(b.r + k, b.c + 2);
+      const texte = typeof brut === "string" ? brut.replace(/\s+/g, " ").trim() : "";
+      const m = texte.match(/^(½|1\/2|0[.,]5)?\s*(CP|RTT)\s*(½|1\/2|0[.,]5)?$/i);
+      if (m) {
+        jours.push({ date: iso, type: m[2].toUpperCase(), duree: m[1] || m[3] ? 0.5 : 1 });
+        if (brut !== texte) espaces.push(iso);
+      }
+      if (estJourOuvre(iso)) {
+        const coul = couleurCellule(cell(b.r + k, b.c + 2)) || couleurCellule(cell(b.r + k, b.c + 3)) || couleurCellule(cell(b.r + k, b.c)) || couleurCellule(cell(b.r + k, b.c + 1));
+        if (coul) surlignes[iso] = coul;
+      }
+    }
+  });
+  const compte = {};
+  Object.keys(surlignes).forEach(function(iso) {
+    compte[surlignes[iso]] = (compte[surlignes[iso]] || 0) + 1;
+  });
+  const couleurs = Object.keys(compte).sort(function(a, b) {
+    return compte[b] - compte[a];
+  });
+  const couleur = couleurs[0] || "";
+  const datesSurlignees = Object.keys(surlignes).filter(function(iso) {
+    return surlignes[iso] === couleur;
+  }).sort();
+  const vacances = [];
+  let groupe = [];
+  const clore = function() {
+    if (!groupe.length) return;
+    let depart = groupe[0];
+    while (!estJourOuvre(plusJoursISO(depart, -1))) depart = plusJoursISO(depart, -1);
+    let reprise = plusJoursISO(groupe[groupe.length - 1], 1);
+    while (!estJourOuvre(reprise)) reprise = plusJoursISO(reprise, 1);
+    vacances.push({ depart, reprise, label: nomVacances(depart) + " " + depart.slice(0, 4) });
+    groupe = [];
+  };
+  datesSurlignees.forEach(function(iso) {
+    if (groupe.length) {
+      let separes = false;
+      for (let x = plusJoursISO(groupe[groupe.length - 1], 1); x < iso; x = plusJoursISO(x, 1)) {
+        if (estJourOuvre(x)) {
+          separes = true;
+          break;
+        }
+      }
+      if (separes) clore();
+    }
+    groupe.push(iso);
+  });
+  clore();
+  return { annee, jours: jours.sort(function(a, b) {
+    return a.date.localeCompare(b.date);
+  }), espaces, vacances, couleur, autresCouleurs: couleurs.slice(1) };
 }
 function joursAdjacents(d1, d2) {
   return (parseISO(d2) - parseISO(d1)) / 864e5 === 1;
@@ -925,7 +1168,7 @@ function mergerPersonnes(personnesDefaut, personnesSauvees) {
   });
 }
 function fusionnerEtat(base, source) {
-  return { ...base, ...source, config: { ...base.config, ...source.config || {}, cpCycleDebut: base.config.cpCycleDebut }, personnes: mergerPersonnes(base.personnes, source.personnes) };
+  return { ...base, ...source, config: { ...base.config, ...source.config || {} }, personnes: mergerPersonnes(base.personnes, source.personnes) };
 }
 const STORAGE_KEY = "suivi_salaire_data";
 function loadState() {
@@ -1293,7 +1536,7 @@ function App() {
     }).sort((a, b) => a.date.localeCompare(b.date));
     persist({ ...state, joursPris: next });
   }
-  function ajouterJoursPlage(dates, type, duree, note) {
+  function ajouterJoursPlage(dates, type, duree, note, forcer) {
     const existants = {};
     state.joursPris.forEach(function(j) {
       existants[j.date + "|" + j.type] = true;
@@ -1301,7 +1544,9 @@ function App() {
     const nouveaux = dates.filter(function(d) {
       return !existants[d + "|" + type];
     }).map(function(d) {
-      return { id: uid(), date: d, type, duree, note };
+      const o = { id: uid(), date: d, type, duree, note };
+      if (forcer && dansPeriodeBloquee(d, state.periodesBloquees)) o.force = true;
+      return o;
     });
     if (!nouveaux.length) return;
     const next = [...state.joursPris, ...nouveaux].sort((a, b) => a.date.localeCompare(b.date));
@@ -1316,9 +1561,42 @@ function App() {
   }
   function modifierPeriode(id, patch) {
     const next = state.periodesBloquees.map(function(p) {
-      return p.id === id ? { ...p, ...patch } : p;
+      return p.id === id ? { ...p, ...patch, auto: void 0 } : p;
     }).sort((a, b) => a.dateDebut.localeCompare(b.dateDebut));
     persist({ ...state, periodesBloquees: next });
+  }
+  function ajouterVacances(v) {
+    const next = [...state.vacancesScolaires || [], { id: uid(), ...v }].sort((a, b) => a.depart.localeCompare(b.depart));
+    persist({ ...state, vacancesScolaires: next });
+  }
+  function modifierVacances(id, patch) {
+    const next = (state.vacancesScolaires || []).map(function(v) {
+      return v.id === id ? { ...v, ...patch } : v;
+    }).sort((a, b) => a.depart.localeCompare(b.depart));
+    persist({ ...state, vacancesScolaires: next });
+  }
+  function supprimerVacances(id) {
+    persist({ ...state, vacancesScolaires: (state.vacancesScolaires || []).filter((v) => v.id !== id) });
+  }
+  function appliquerBlocage(annee, periodes) {
+    const next = state.periodesBloquees.filter((p) => p.auto !== annee).concat(periodes.map((p) => ({ id: uid(), ...p }))).sort((a, b) => a.dateDebut.localeCompare(b.dateDebut));
+    persist({ ...state, periodesBloquees: next });
+  }
+  function importerCalendrier(imp) {
+    const existants = {};
+    state.joursPris.forEach(function(j) {
+      existants[j.date] = true;
+    });
+    const nouveaux = imp.jours.filter((j) => !existants[j.date]).map(function(j) {
+      const o = { id: uid(), date: j.date, type: j.type, duree: j.duree, note: "Import calendrier " + imp.annee };
+      if (j.force) o.force = true;
+      return o;
+    });
+    const joursPris = [...state.joursPris, ...nouveaux].sort((a, b) => a.date.localeCompare(b.date));
+    const vacancesScolaires = [...state.vacancesScolaires || [], ...imp.vacances.map((v) => ({ id: uid(), label: v.label, depart: v.depart, reprise: v.reprise }))].sort((a, b) => a.depart.localeCompare(b.depart));
+    let periodesBloquees = state.periodesBloquees;
+    if (imp.blocage) periodesBloquees = state.periodesBloquees.filter((p) => p.auto !== imp.annee).concat(imp.blocage.map((b) => ({ id: uid(), ...b }))).sort((a, b) => a.dateDebut.localeCompare(b.dateDebut));
+    persist({ ...state, joursPris, vacancesScolaires, periodesBloquees });
   }
   function ajouterPersonne() {
     updatePersonnes([...state.personnes, { id: uid(), nom: "", dateEntree: "", entreesMensuelles: {} }]);
@@ -1447,8 +1725,11 @@ function App() {
     }).reduce(function(s, j) {
       return s + Number(j.duree);
     }, 0));
-    const cpPrisAnnee = round2(joursAnnee.filter(function(j) {
-      return j.type === "CP";
+    const debutCPArchive = debutCycle(state.config.cpCycleDebut, new Date(annee, 11, 31));
+    const debutCPStr = toLocalISODate(debutCPArchive);
+    const finCPStr = toLocalISODate(new Date(debutCPArchive.getFullYear() + 1, debutCPArchive.getMonth(), debutCPArchive.getDate() - 1));
+    const cpPrisAnnee = round2(state.joursPris.filter(function(j) {
+      return j.type === "CP" && j.date >= debutCPStr && j.date <= finCPStr;
     }).reduce(function(s, j) {
       return s + Number(j.duree);
     }, 0));
@@ -1615,6 +1896,12 @@ function App() {
       ajouterPeriode,
       modifierPeriode,
       supprimerPeriode,
+      vacancesScolaires: state.vacancesScolaires || [],
+      ajouterVacances,
+      modifierVacances,
+      supprimerVacances,
+      appliquerBlocage,
+      importerCalendrier,
       personnes: state.personnes,
       ajouterPersonne,
       supprimerPersonne,
@@ -1931,7 +2218,178 @@ function ImpotsTab({ personnes, updatePersonneChamp, config, updateConfig, jours
     return /* @__PURE__ */ React.createElement("div", { key: a.id, className: "rounded-lg overflow-hidden", style: { backgroundColor: i % 2 === 1 ? COLORS.stripe : "transparent" } }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between px-2 py-1.5 cursor-pointer", onClick: () => setArchiveOuverte(ouvert ? null : a.id) }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "font-mono" }, a.annee, " — ", a.montantAPayer >= 0 ? "à payer " : "à rembourser ", formatEURSansCentimes(Math.abs(a.montantAPayer))), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, "Archivée le ", formatDateFR(a.dateArchivage))), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2", onClick: (ev) => ev.stopPropagation() }, /* @__PURE__ */ React.createElement("button", { onClick: () => supprimerArchiveImpots(a.id) }, /* @__PURE__ */ React.createElement(TrashIcon, { color: COLORS.loss })), /* @__PURE__ */ React.createElement("span", { className: "text-xs text-stone-400" }, ouvert ? "▲" : "▼"))), ouvert && /* @__PURE__ */ React.createElement("div", { className: "px-2 pb-2" }, /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-2" }, /* @__PURE__ */ React.createElement(MetricBoxCentre, { label: "Revenu foyer", value: formatEURSansCentimes(a.revenuFoyer) }), /* @__PURE__ */ React.createElement(MetricBoxCentre, { label: "Parts", value: a.partsTotal }), /* @__PURE__ */ React.createElement(MetricBoxCentre, { label: "Impôt brut", value: formatEURSansCentimes(a.impotBrut) }), /* @__PURE__ */ React.createElement(MetricBoxCentre, { label: "Décote", value: "− " + formatEURSansCentimes(a.decote) }), /* @__PURE__ */ React.createElement(MetricBoxCentre, { label: "Réduc. syndicale", value: formatEURSansCentimes(a.creditSyndical) }), /* @__PURE__ */ React.createElement(MetricBoxCentre, { label: "Réduc. scolarité", value: formatEURSansCentimes(a.reductionScolarite) }), /* @__PURE__ */ React.createElement(MetricBoxCentre, { label: "Impôt net", value: formatEURSansCentimes(a.impotNet) }), /* @__PURE__ */ React.createElement(MetricBoxCentre, { label: "PAS versé", value: "− " + formatEURSansCentimes(a.pasFoyer) })), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mt-2" }, a.situationFamiliale === "couple" ? "Marié(e)/Pacsé(e)" : "Célibataire/divorcé(e)/veuf(ve)", " · ", a.nombreEnfants, " enfant(s) à charge · scolarité : ", a.enfantsCollege, " collège, ", a.enfantsLycee, " lycée, ", a.enfantsSuperieur, " sup.", a.baremeAnneeReference ? " · barème sur revenus " + a.baremeAnneeReference : "")));
   })), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mt-3" }, "Archiver conserve un instantané du calcul pour ", annee, ", même si tu modifies les paramètres plus tard.")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium mb-1" }, "⚙️ Barème & paramètres"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mb-3" }, "Le barème change chaque année (loi de finances), mais ce fichier est autonome et n'a pas de serveur : il ne peut pas aller le chercher tout seul sur un site officiel (et une extraction automatique serait risquée pour un montant d'impôt si la page source changeait de forme). Demande-moi de le mettre à jour dès qu'une nouvelle loi de finances est promulguée, ou modifie les valeurs ci-dessous à la main."), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-3" }, /* @__PURE__ */ React.createElement(NumberFieldCentre, { label: "Seuil tranche 11 %", value: config.baremeSeuil1, onChange: (v) => updateConfig({ baremeSeuil1: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberFieldCentre, { label: "Seuil tranche 30 %", value: config.baremeSeuil2, onChange: (v) => updateConfig({ baremeSeuil2: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberFieldCentre, { label: "Abattement frais pro", value: config.abattement10PctTaux, onChange: (v) => updateConfig({ abattement10PctTaux: v }), suffix: "%" }), /* @__PURE__ */ React.createElement(NumberFieldCentre, { label: "Abattement — plancher", value: config.abattement10PctMin, onChange: (v) => updateConfig({ abattement10PctMin: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberFieldCentre, { label: "Abattement — plafond", value: config.abattement10PctMax, onChange: (v) => updateConfig({ abattement10PctMax: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberFieldCentre, { label: "Seuil tranche 41 %", value: config.baremeSeuil3, onChange: (v) => updateConfig({ baremeSeuil3: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberFieldCentre, { label: "Seuil tranche 45 %", value: config.baremeSeuil4, onChange: (v) => updateConfig({ baremeSeuil4: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberFieldCentre, { label: "Plafond décote / demi-part", value: config.plafondDemiPart, onChange: (v) => updateConfig({ plafondDemiPart: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberFieldCentre, { label: "Taux décote", value: config.decoteTauxPct, onChange: (v) => updateConfig({ decoteTauxPct: v }), suffix: "%" }), /* @__PURE__ */ React.createElement(NumberFieldCentre, { label: "Décote — seuil célibataire", value: config.decoteSeuilSeul, onChange: (v) => updateConfig({ decoteSeuilSeul: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberFieldCentre, { label: "Décote — célibataire", value: config.decoteConstanteSeul, onChange: (v) => updateConfig({ decoteConstanteSeul: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberFieldCentre, { label: "Décote — seuil couple", value: config.decoteSeuilCouple, onChange: (v) => updateConfig({ decoteSeuilCouple: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberFieldCentre, { label: "Décote — constante couple", value: config.decoteConstanteCouple, onChange: (v) => updateConfig({ decoteConstanteCouple: v }), suffix: "€" }), /* @__PURE__ */ React.createElement(NumberFieldCentre, { label: "Base sur les revenus", value: config.baremeAnneeReference, onChange: (v) => updateConfig({ baremeAnneeReference: v }), step: "1" }), /* @__PURE__ */ React.createElement(TextDateField, { label: "Vérifié le", value: config.baremeDateMaj, onChange: (v) => updateConfig({ baremeDateMaj: v }) }), /* @__PURE__ */ React.createElement(TextDateField, { label: "Prochain rappel", value: config.rappelBaremeDate, onChange: (v) => updateConfig({ rappelBaremeDate: v }) })), /* @__PURE__ */ React.createElement("div", { className: "mt-3 pt-3 border-t border-stone-200" }, /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mb-2" }, "Pour vérifier toi-même les tranches en vigueur :"), /* @__PURE__ */ React.createElement("a", { href: "https://www.service-public.gouv.fr/particuliers/vosdroits/F1419?lang=fr", target: "_blank", rel: "noopener noreferrer", className: "px-3 py-1.5 rounded-lg text-xs text-white whitespace-nowrap", style: { backgroundColor: COLORS.accent } }, "🔗 Barème officiel"))));
 }
-function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifierJour, supprimerJour, periodesBloquees, ajouterPeriode, modifierPeriode, supprimerPeriode, personnes, ajouterPersonne, supprimerPersonne, updatePersonne, conges, today, archivesConges, ajouterArchiveConges, supprimerArchiveConges }) {
+function BlocageVacancesCard({ config, updateConfig, vacances, ajouterVacances, modifierVacances, supprimerVacances, periodesBloquees, appliquerBlocage, today }) {
+  const h = React.createElement;
+  const [annee, setAnnee] = useState(today.getFullYear());
+  const [ouvert, setOuvert] = useState(false);
+  const [form, setForm] = useState({ label: "", depart: "", reprise: "" });
+  const [editingId, setEditingId] = useState(null);
+  const pastille = { backgroundColor: COLORS.stripe };
+  const calcul = calculerBlocage(annee, config, vacances);
+  const appliquees = periodesBloquees.filter(function(p) {
+    return p.auto === annee;
+  });
+  const cle = function(p) {
+    return p.dateDebut + "|" + p.dateFin + "|" + p.label;
+  };
+  const aJour = appliquees.length === calcul.length && appliquees.every(function(p, i) {
+    return cle(p) === cle(calcul[i]);
+  });
+  const vacAnnee = vacances.filter(function(v) {
+    return v.depart.slice(0, 4) === String(annee) || v.reprise.slice(0, 4) === String(annee);
+  });
+  function soumettre(e) {
+    e.preventDefault();
+    if (!form.depart || !form.reprise || form.reprise <= form.depart) return;
+    const v = { label: form.label.trim() || "Vacances scolaires", depart: form.depart, reprise: form.reprise };
+    if (editingId) modifierVacances(editingId, v);
+    else ajouterVacances(v);
+    setEditingId(null);
+    setForm({ label: "", depart: "", reprise: "" });
+  }
+  function annulerEdition() {
+    setEditingId(null);
+    setForm({ label: "", depart: "", reprise: "" });
+  }
+  return h(
+    Card,
+    null,
+    h("div", { className: "flex items-center justify-between mb-3" }, h("p", { className: "text-sm font-medium" }, "🚧 Blocage automatique"), h("div", { className: "flex items-center gap-1" }, h("button", { onClick: () => setAnnee(annee - 1), className: "text-xs rounded-full px-2 py-1.5", style: pastille }, "◀"), h("span", { className: "text-xs font-mono px-1" }, annee), h("button", { onClick: () => setAnnee(annee + 1), className: "text-xs rounded-full px-2 py-1.5", style: pastille }, "▶"))),
+    h("div", { className: "grid grid-cols-2 gap-3 mb-2" }, h(NumberField, { label: "Semaine de début", value: config.blocageSemaineDebut, onChange: (v) => updateConfig({ blocageSemaineDebut: v }), step: "1" }), h(NumberField, { label: "Semaine de fin", value: config.blocageSemaineFin, onChange: (v) => updateConfig({ blocageSemaineFin: v }), step: "1" })),
+    h("label", { className: "flex items-center gap-2 text-xs text-stone-600 mb-3" }, h("input", { type: "checkbox", checked: config.blocageLundiApresPont !== false, onChange: (e) => updateConfig({ blocageLundiApresPont: e.target.checked }) }), "Bloquer aussi le lundi après un long pont"),
+    h("p", { className: "text-xs text-stone-500 mb-1" }, "Aperçu ", annee, " (semaines hors vacances scolaires zone B)"),
+    h("div", { className: "space-y-1 mb-3" }, calcul.length === 0 && h("p", { className: "text-sm text-stone-400" }, "Aucune période calculée."), calcul.map(function(per, i) {
+      return h(Row, { key: per.dateDebut, index: i }, h("div", null, h("p", { className: "font-mono" }, formatDateFR(per.dateDebut), " → ", formatDateFR(per.dateFin)), h("p", { className: "text-xs text-stone-400" }, per.label)));
+    })),
+    h("button", { onClick: () => appliquerBlocage(annee, calcul), disabled: aJour, className: "w-full text-white rounded-lg py-2 text-sm font-medium disabled:opacity-40", style: { backgroundColor: COLORS.ink } }, aJour ? "Liste à jour pour " + annee : appliquees.length ? "Mettre à jour " + annee + " dans la liste" : "Appliquer " + annee + " à la liste"),
+    h("div", { className: "flex items-center justify-between mt-4 mb-2" }, h("p", { className: "text-sm font-medium" }, "🏫 Vacances scolaires — zone B"), h("button", { onClick: () => setOuvert(!ouvert), className: "text-xs rounded-full px-3 py-1.5", style: pastille }, ouvert ? "Masquer" : "Modifier (" + vacAnnee.length + ")")),
+    ouvert && h(
+      "div",
+      null,
+      h("div", { className: "space-y-1" }, vacAnnee.length === 0 && h("p", { className: "text-sm text-stone-400" }, "Aucune période pour ", annee, "."), vacAnnee.map(function(v, i) {
+        return h(Row, { key: v.id, index: i }, h("div", null, h("p", { className: "text-sm" }, v.label), h("p", { className: "text-xs text-stone-400 font-mono" }, formatDateFR(v.depart), " → reprise ", formatDateFR(v.reprise))), h("div", { className: "flex items-center gap-2" }, h("button", { onClick: function() {
+          setEditingId(v.id);
+          setForm({ label: v.label, depart: v.depart, reprise: v.reprise });
+        } }, h(EditIcon, { size: 15, color: COLORS.accent })), h("button", { onClick: () => supprimerVacances(v.id) }, h(TrashIcon, { color: COLORS.loss }))));
+      })),
+      editingId && h("p", { className: "text-xs mt-2", style: { color: COLORS.accent } }, "Modification d'une période existante"),
+      h("form", { onSubmit: soumettre, className: "grid grid-cols-2 gap-2 mt-2" }, h("input", { type: "text", placeholder: "Nom (ex. Printemps 2029)", value: form.label, onChange: (e) => setForm({ ...form, label: e.target.value }), className: "col-span-2 border border-stone-300 rounded-lg px-3 py-2 text-sm" }), h("label", { className: "block" }, h("span", { className: "text-xs text-stone-500" }, "Départ (samedi)"), h("input", { type: "date", value: form.depart, onChange: (e) => setForm({ ...form, depart: e.target.value }), className: "w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" })), h("label", { className: "block" }, h("span", { className: "text-xs text-stone-500" }, "Reprise des cours"), h("input", { type: "date", value: form.reprise, onChange: (e) => setForm({ ...form, reprise: e.target.value }), className: "w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" })), h("button", { type: "submit", className: "text-white rounded-lg py-2 text-sm font-medium", style: { backgroundColor: COLORS.ink, gridColumn: editingId ? "span 1 / span 1" : "span 2 / span 2" } }, editingId ? "Enregistrer" : "Ajouter"), editingId && h("button", { type: "button", onClick: annulerEdition, className: "rounded-lg text-sm", style: pastille }, "Annuler")),
+      h("p", { className: "text-xs text-stone-400 mt-2" }, "Dates officielles de l'Éducation nationale ; la reprise des cours est le premier jour de classe (exclu des vacances).")
+    )
+  );
+}
+function ImportCalendrierCard({ joursPris, periodesBloquees, vacances, config, acquisAnnee, importerCalendrier }) {
+  const h = React.createElement;
+  const [analyse, setAnalyse] = useState(null);
+  const [erreur, setErreur] = useState("");
+  const [message, setMessage] = useState("");
+  const [forcer, setForcer] = useState(false);
+  const [ajouterVac, setAjouterVac] = useState(true);
+  const [majBlocage, setMajBlocage] = useState(true);
+  const pastille = { backgroundColor: COLORS.stripe };
+  const maxRtt = Number(config.maxRttConsecutifs) || 5;
+  function choisirFichier(e) {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    const lecteur = new FileReader();
+    lecteur.onload = function() {
+      try {
+        setAnalyse({ ...lireCalendrierExcel(new Uint8Array(lecteur.result)), nomFichier: f.name });
+        setErreur("");
+        setMessage("");
+        setForcer(false);
+      } catch (err) {
+        setAnalyse(null);
+        setErreur(err && err.message ? err.message : "Fichier illisible.");
+      }
+    };
+    lecteur.onerror = function() {
+      setErreur("Fichier illisible.");
+    };
+    lecteur.readAsArrayBuffer(f);
+    try {
+      e.target.value = "";
+    } catch (err) {
+    }
+  }
+  function annuler() {
+    setAnalyse(null);
+    setErreur("");
+    setForcer(false);
+  }
+  const a = analyse;
+  let vacStat = [], nouvellesVac = [], blocageAuto = [], periodesApres = periodesBloquees;
+  let doublons = [], enBlocage = [], aImporter = [], alertes = [], nbRTT = 0, nbCP = 0;
+  if (a) {
+    vacStat = a.vacances.map(function(v) {
+      return { ...v, nouvelle: !vacancesCouvertes(v, vacances) };
+    });
+    nouvellesVac = vacStat.filter(function(v) {
+      return v.nouvelle;
+    });
+    const vacApres = ajouterVac ? vacances.concat(nouvellesVac) : vacances;
+    blocageAuto = calculerBlocage(a.annee, config, vacApres);
+    periodesApres = majBlocage ? periodesBloquees.filter(function(p) {
+      return p.auto !== a.annee;
+    }).concat(blocageAuto) : periodesBloquees;
+    const existants = {};
+    joursPris.forEach(function(j) {
+      existants[j.date] = true;
+    });
+    nbRTT = a.jours.filter((j) => j.type === "RTT").length;
+    nbCP = a.jours.filter((j) => j.type === "CP").length;
+    doublons = a.jours.filter((j) => existants[j.date]);
+    const candidats = a.jours.filter((j) => !existants[j.date]);
+    enBlocage = candidats.filter((j) => dansPeriodeBloquee(j.date, periodesApres));
+    aImporter = candidats.filter((j) => forcer || !dansPeriodeBloquee(j.date, periodesApres)).map((j) => ({ ...j, force: !!dansPeriodeBloquee(j.date, periodesApres) }));
+    const acq = acquisAnnee(a.annee);
+    const poses = function(type) {
+      return round2(joursPris.filter((j) => j.type === type && j.date.slice(0, 4) === String(a.annee)).reduce((s, j) => s + Number(j.duree), 0) + aImporter.filter((j) => j.type === type).reduce((s, j) => s + j.duree, 0));
+    };
+    const rttPoses = poses("RTT"), cpPoses = poses("CP");
+    if (rttPoses > acq.rtt) alertes.push("RTT " + a.annee + " : " + formatJours(rttPoses) + " j posés pour " + formatJours(acq.rtt) + " acquis (" + formatJours(round2(acq.rtt - rttPoses)) + " j)");
+    if (cpPoses > acq.cp) alertes.push("CP " + a.annee + " : " + formatJours(cpPoses) + " j posés pour " + formatJours(acq.cp) + " acquis (" + formatJours(round2(acq.cp - cpPoses)) + " j)");
+    const rttDates = joursPris.filter((j) => j.type === "RTT").map((j) => j.date).concat(aImporter.filter((j) => j.type === "RTT").map((j) => j.date)).sort();
+    let suite = rttDates.length ? 1 : 0, maxSuite = suite;
+    for (let i = 1; i < rttDates.length; i++) {
+      suite = joursAdjacents(rttDates[i - 1], rttDates[i]) ? suite + 1 : 1;
+      maxSuite = Math.max(maxSuite, suite);
+    }
+    if (maxSuite > maxRtt) alertes.push("Plus de " + maxRtt + " RTT consécutifs (" + maxSuite + ")");
+  }
+  const rienAFaire = a && aImporter.length === 0 && !(ajouterVac && nouvellesVac.length) && !majBlocage;
+  function appliquer() {
+    importerCalendrier({ annee: a.annee, jours: aImporter, vacances: ajouterVac ? nouvellesVac : [], blocage: majBlocage ? blocageAuto : null });
+    setMessage(aImporter.length + " jour(s) importé(s) depuis le calendrier " + a.annee + (majBlocage ? " · blocage " + a.annee + " mis à jour" : "") + ".");
+    setAnalyse(null);
+    setForcer(false);
+  }
+  return h(
+    Card,
+    null,
+    h("p", { className: "text-sm font-medium mb-1" }, "📥 Importer un calendrier Excel"),
+    h("p", { className: "text-xs text-stone-500 mb-3" }, "Modèle Calendarpedia (12 mois en colonnes) : les cases « CP » et « RTT » deviennent des jours posés ; les cases surlignées servent de vacances scolaires."),
+    h("label", { className: "block w-full text-center text-sm rounded-lg py-2 cursor-pointer", style: pastille }, "Choisir un fichier .xlsx", h("input", { type: "file", accept: ".xlsx,.xlsm,.xls", onChange: choisirFichier, className: "hidden" })),
+    erreur && h("div", { className: "mt-2" }, h(Warning, null, erreur)),
+    message && h("p", { className: "text-xs mt-2", style: { color: COLORS.gain } }, message),
+    a && h(
+      "div",
+      { className: "mt-3 space-y-2" },
+      h("p", { className: "text-xs text-stone-500" }, "Calendrier ", a.annee, " · ", a.nomFichier),
+      h("div", { className: "rounded-lg p-3 text-xs space-y-1", style: pastille }, h("p", null, "RTT détectés : ", nbRTT, " · CP détectés : ", nbCP), doublons.length > 0 && h("p", null, doublons.length, " jour(s) déjà saisi(s) — ignoré(s)"), a.espaces.length > 0 && h("p", { className: "text-stone-500" }, a.espaces.length, " case(s) avec un espace en trop reconnue(s) : ", a.espaces.map(formatDateFR).join(", "))),
+      alertes.map(function(t, i) {
+        return h(Warning, { key: i }, t);
+      }),
+      enBlocage.length > 0 && h("div", { className: "rounded-lg p-3 text-xs space-y-1", style: { backgroundColor: COLORS.warnBg, color: COLORS.loss } }, h("p", { className: "font-medium" }, enBlocage.length, " jour(s) en période de blocage"), h("p", null, enBlocage.map((j) => formatDateFR(j.date) + " " + j.type).join(" · ")), h("label", { className: "flex items-center gap-2 mt-1" }, h("input", { type: "checkbox", checked: forcer, onChange: (e) => setForcer(e.target.checked) }), "Forcer ces jours malgré le blocage")),
+      h("div", { className: "text-xs space-y-1" }, h("p", { className: "font-medium" }, a.couleur ? h("span", { style: { display: "inline-block", width: 10, height: 10, marginRight: 6, border: "1px solid #a8a29e", backgroundColor: "#" + a.couleur } }) : null, "Vacances scolaires (cases surlignées) : ", vacStat.length, " période(s), ", nouvellesVac.length, " nouvelle(s)"), vacStat.map(function(v) {
+        return h("p", { key: v.depart, className: "text-stone-500" }, v.label, " : ", formatDateFR(v.depart), " → reprise ", formatDateFR(v.reprise), " · ", v.nouvelle ? "nouvelle" : "déjà présente");
+      }), nouvellesVac.length > 0 && h("label", { className: "flex items-center gap-2" }, h("input", { type: "checkbox", checked: ajouterVac, onChange: (e) => setAjouterVac(e.target.checked) }), "Ajouter les nouvelles périodes")),
+      h("label", { className: "flex items-center gap-2 text-xs" }, h("input", { type: "checkbox", checked: majBlocage, onChange: (e) => setMajBlocage(e.target.checked) }), "Mettre à jour le blocage ", a.annee, " (", blocageAuto.length, " période(s))"),
+      h("div", { className: "flex gap-2" }, h("button", { onClick: appliquer, disabled: rienAFaire, className: "flex-1 text-white rounded-lg py-2 text-sm font-medium disabled:opacity-40", style: { backgroundColor: COLORS.ink } }, "Importer ", aImporter.length, " jour(s)"), h("button", { onClick: annuler, className: "px-4 rounded-lg text-sm", style: pastille }, "Annuler"))
+    )
+  );
+}
+function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifierJour, supprimerJour, periodesBloquees, ajouterPeriode, modifierPeriode, supprimerPeriode, vacancesScolaires, ajouterVacances, modifierVacances, supprimerVacances, appliquerBlocage, importerCalendrier, personnes, ajouterPersonne, supprimerPersonne, updatePersonne, conges, today, archivesConges, ajouterArchiveConges, supprimerArchiveConges }) {
   const [form, setForm] = useState(function() {
     return { date: dernierJourSaisi(joursPris), dateFin: "", type: "RTT", duree: "1", note: "" };
   });
@@ -1944,6 +2402,7 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifie
   const [editingJourId, setEditingJourId] = useState(null);
   const [periodeForm, setPeriodeForm] = useState({ dateDebut: "", dateFin: "", label: "" });
   const [editingPeriodeId, setEditingPeriodeId] = useState(null);
+  const [forcerBlocage, setForcerBlocage] = useState(false);
   const [modeSelection, setModeSelection] = useState("jours");
   const [joursChoisis, setJoursChoisis] = useState([]);
   const [dateAAjouter, setDateAAjouter] = useState(function() {
@@ -1953,6 +2412,10 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifie
     return p.id === "nicolas";
   })[0];
   const maxRtt = Number(config.maxRttConsecutifs) || 5;
+  function acquisAnnee(a) {
+    const bonus = bonusAncienneteJours(nicolasP && nicolasP.dateEntree ? anneesEcoulees(parseISO(nicolasP.dateEntree), new Date(a, 11, 31)) : 0);
+    return { rtt: Number(config.rttBaseAnnuel) || 0, cp: round2((Number(config.cpBaseAnnuel) || 0) + bonus) };
+  }
   const dateFinEffective = form.dateFin || form.date;
   let joursPlage = [];
   if (editingJourId) {
@@ -1967,6 +2430,9 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifie
   const blackoutsPlage = joursPlage.map(function(d) {
     return dansPeriodeBloquee(d, periodesBloquees);
   }).filter(Boolean);
+  useEffect(function() {
+    setForcerBlocage(false);
+  }, [joursPlage.join(",")]);
   const tropConsecutifs = form.type === "RTT" && joursPlage.some(function(d) {
     return depasseRTTConsecutifs(d, joursPris, maxRtt);
   });
@@ -1981,7 +2447,7 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifie
   const soldeActuelType = form.type === "RTT" ? conges.soldeRTT : form.type === "CP" ? conges.soldeCP : null;
   const soldeApres = soldeConcerne ? round2(soldeActuelType - dureeTotale + (editingJourId ? Number(form.duree) : 0)) : null;
   const soldeNegatif = soldeConcerne && soldeApres < 0;
-  const blocageSubmit = !editingJourId && (soldeNegatif || chevauchements.length > 0);
+  const blocageSubmit = !editingJourId && (soldeNegatif || chevauchements.length > 0 || blackoutsPlage.length > 0 && !forcerBlocage);
   function commencerEditionJour(j) {
     setEditingJourId(j.id);
     setForm({ date: j.date, dateFin: "", type: j.type, duree: String(j.duree), note: j.note || "" });
@@ -2011,7 +2477,8 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifie
     } else {
       if (!joursPlage.length) return;
       derniereDateSoumise = joursPlage[joursPlage.length - 1];
-      ajouterJoursPlage(joursPlage, form.type, Number(form.duree), form.note);
+      ajouterJoursPlage(joursPlage, form.type, Number(form.duree), form.note, forcerBlocage);
+      setForcerBlocage(false);
       setJoursChoisis([]);
     }
     setForm({ date: derniereDateSoumise, dateFin: "", type: form.type, duree: "1", note: "" });
@@ -2043,16 +2510,16 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifie
     return /* @__PURE__ */ React.createElement(Row, { key: p.id, index: i }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "font-mono" }, p.nom || "(sans nom)", annees != null ? " — " + annees + " ans" : ""), palier && /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, "Prochain palier : ", palier.annees, " ans (", formatDateFR(toLocalISODate(palier.date)), ")")), /* @__PURE__ */ React.createElement("p", { className: "font-mono text-sm font-medium", style: { color: bonus > 0 ? COLORS.gain : "#A8A29E" } }, bonus > 0 ? "+" + bonus + " j" : "—"));
   })), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mb-3" }, "+1 semaine (5 j) à 10 ans, +2 semaines à 20 ans, +3 semaines à 30 ans. Seul le bonus de Nicolas s'ajoute automatiquement à son solde CP."), personnes.map(function(p) {
     return /* @__PURE__ */ React.createElement("div", { key: p.id, className: "grid grid-cols-2 gap-2 mb-2" }, /* @__PURE__ */ React.createElement("input", { type: "text", value: p.nom, onChange: (e) => updatePersonne(p.id, { nom: e.target.value }), placeholder: "Nom", className: "border border-stone-300 rounded-lg px-3 py-2 text-sm" }), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ React.createElement(TextDateInput, { value: p.dateEntree, onChange: (v) => updatePersonne(p.id, { dateEntree: v }), className: "flex-1 min-w-0 border border-stone-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-400" }), p.id !== "nicolas" ? /* @__PURE__ */ React.createElement("button", { onClick: () => supprimerPersonne(p.id) }, /* @__PURE__ */ React.createElement(TrashIcon, { color: COLORS.loss })) : /* @__PURE__ */ React.createElement("button", { style: { visibility: "hidden" }, tabIndex: -1, "aria-hidden": "true" }, /* @__PURE__ */ React.createElement(TrashIcon, { color: COLORS.loss }))));
-  }), /* @__PURE__ */ React.createElement("button", { onClick: ajouterPersonne, className: "text-xs mt-1", style: { color: COLORS.accent } }, "+ Ajouter une personne")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium mb-3" }, "Bases & cycle"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-3" }, /* @__PURE__ */ React.createElement(NumberField, { label: "Base RTT / an", value: config.rttBaseAnnuel, onChange: (v) => updateConfig({ rttBaseAnnuel: v }), step: "1", suffix: "j" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Base CP / an", value: config.cpBaseAnnuel, onChange: (v) => updateConfig({ cpBaseAnnuel: v }), step: "1", suffix: "j" }), /* @__PURE__ */ React.createElement("label", { className: "block" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs text-stone-500" }, "Début cycle CP (MM-JJ)"), /* @__PURE__ */ React.createElement("input", { type: "text", value: config.cpCycleDebut, onChange: (e) => updateConfig({ cpCycleDebut: e.target.value }), placeholder: "06-01", className: "font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" })), /* @__PURE__ */ React.createElement(NumberField, { label: "Max RTT consécutifs", value: config.maxRttConsecutifs, onChange: (v) => updateConfig({ maxRttConsecutifs: v }), step: "1", suffix: "j" }))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between mb-3" }, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium" }, "Périodes sans RTT/CP possible"), /* @__PURE__ */ React.createElement("button", { onClick: () => envoyerPeriodesParMail(periodesBloquees), className: "text-xs flex items-center gap-1 rounded-full px-3 py-1.5", style: { backgroundColor: COLORS.stripe } }, /* @__PURE__ */ React.createElement(MailIcon, { size: 12 }), " Envoyer par mail")), /* @__PURE__ */ React.createElement("div", { className: "space-y-1 mb-3" }, periodesBloquees.length === 0 && /* @__PURE__ */ React.createElement("p", { className: "text-sm text-stone-400" }, "Aucune période définie."), periodesBloquees.map(function(per, i) {
+  }), /* @__PURE__ */ React.createElement("button", { onClick: ajouterPersonne, className: "text-xs mt-1", style: { color: COLORS.accent } }, "+ Ajouter une personne")), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium mb-3" }, "Bases & cycle"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-3" }, /* @__PURE__ */ React.createElement(NumberField, { label: "Base RTT / an", value: config.rttBaseAnnuel, onChange: (v) => updateConfig({ rttBaseAnnuel: v }), step: "1", suffix: "j" }), /* @__PURE__ */ React.createElement(NumberField, { label: "Base CP / an", value: config.cpBaseAnnuel, onChange: (v) => updateConfig({ cpBaseAnnuel: v }), step: "1", suffix: "j" }), /* @__PURE__ */ React.createElement("label", { className: "block" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs text-stone-500" }, "Début cycle CP (MM-JJ)"), /* @__PURE__ */ React.createElement("input", { type: "text", value: config.cpCycleDebut, onChange: (e) => updateConfig({ cpCycleDebut: e.target.value }), placeholder: "01-01", className: "font-mono w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" })), /* @__PURE__ */ React.createElement(NumberField, { label: "Max RTT consécutifs", value: config.maxRttConsecutifs, onChange: (v) => updateConfig({ maxRttConsecutifs: v }), step: "1", suffix: "j" }))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between mb-3" }, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium" }, "Périodes sans RTT/CP possible"), /* @__PURE__ */ React.createElement("button", { onClick: () => envoyerPeriodesParMail(periodesBloquees), className: "text-xs flex items-center gap-1 rounded-full px-3 py-1.5", style: { backgroundColor: COLORS.stripe } }, /* @__PURE__ */ React.createElement(MailIcon, { size: 12 }), " Envoyer par mail")), /* @__PURE__ */ React.createElement("div", { className: "space-y-1 mb-3" }, periodesBloquees.length === 0 && /* @__PURE__ */ React.createElement("p", { className: "text-sm text-stone-400" }, "Aucune période définie."), periodesBloquees.map(function(per, i) {
     return /* @__PURE__ */ React.createElement(Row, { key: per.id, index: i }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "font-mono" }, formatDateFR(per.dateDebut), " → ", formatDateFR(per.dateFin)), per.label && /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, per.label)), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ React.createElement("button", { onClick: () => commencerEditionPeriode(per) }, /* @__PURE__ */ React.createElement(EditIcon, { size: 15, color: COLORS.accent })), /* @__PURE__ */ React.createElement("button", { onClick: () => supprimerPeriode(per.id) }, /* @__PURE__ */ React.createElement(TrashIcon, { color: COLORS.loss }))));
-  })), editingPeriodeId && /* @__PURE__ */ React.createElement("p", { className: "text-xs mb-2", style: { color: COLORS.accent } }, "Modification d'une période existante"), /* @__PURE__ */ React.createElement("form", { onSubmit: submitPeriode, className: "grid grid-cols-2 gap-2" }, /* @__PURE__ */ React.createElement("input", { type: "date", value: periodeForm.dateDebut, onChange: (e) => setPeriodeForm({ ...periodeForm, dateDebut: e.target.value }), className: "border border-stone-300 rounded-lg px-3 py-2 text-sm" }), /* @__PURE__ */ React.createElement("input", { type: "date", value: periodeForm.dateFin, onChange: (e) => setPeriodeForm({ ...periodeForm, dateFin: e.target.value }), className: "border border-stone-300 rounded-lg px-3 py-2 text-sm" }), /* @__PURE__ */ React.createElement("input", { type: "text", placeholder: "Motif (optionnel)", value: periodeForm.label, onChange: (e) => setPeriodeForm({ ...periodeForm, label: e.target.value }), className: "col-span-2 border border-stone-300 rounded-lg px-3 py-2 text-sm" }), /* @__PURE__ */ React.createElement("button", { type: "submit", className: "text-white rounded-lg py-2 text-sm font-medium", style: { backgroundColor: COLORS.ink, gridColumn: editingPeriodeId ? "span 1 / span 1" : "span 2 / span 2" } }, editingPeriodeId ? "Enregistrer" : "Bloquer cette période"), editingPeriodeId && /* @__PURE__ */ React.createElement("button", { type: "button", onClick: annulerEditionPeriode, className: "rounded-lg text-sm", style: { backgroundColor: COLORS.stripe, color: COLORS.ink } }, "Annuler"))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between mb-3" }, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium" }, "🌴 Historique CP"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, joursPris.filter(function(j) {
+  })), editingPeriodeId && /* @__PURE__ */ React.createElement("p", { className: "text-xs mb-2", style: { color: COLORS.accent } }, "Modification d'une période existante"), /* @__PURE__ */ React.createElement("form", { onSubmit: submitPeriode, className: "grid grid-cols-2 gap-2" }, /* @__PURE__ */ React.createElement("input", { type: "date", value: periodeForm.dateDebut, onChange: (e) => setPeriodeForm({ ...periodeForm, dateDebut: e.target.value }), className: "border border-stone-300 rounded-lg px-3 py-2 text-sm" }), /* @__PURE__ */ React.createElement("input", { type: "date", value: periodeForm.dateFin, onChange: (e) => setPeriodeForm({ ...periodeForm, dateFin: e.target.value }), className: "border border-stone-300 rounded-lg px-3 py-2 text-sm" }), /* @__PURE__ */ React.createElement("input", { type: "text", placeholder: "Motif (optionnel)", value: periodeForm.label, onChange: (e) => setPeriodeForm({ ...periodeForm, label: e.target.value }), className: "col-span-2 border border-stone-300 rounded-lg px-3 py-2 text-sm" }), /* @__PURE__ */ React.createElement("button", { type: "submit", className: "text-white rounded-lg py-2 text-sm font-medium", style: { backgroundColor: COLORS.ink, gridColumn: editingPeriodeId ? "span 1 / span 1" : "span 2 / span 2" } }, editingPeriodeId ? "Enregistrer" : "Bloquer cette période"), editingPeriodeId && /* @__PURE__ */ React.createElement("button", { type: "button", onClick: annulerEditionPeriode, className: "rounded-lg text-sm", style: { backgroundColor: COLORS.stripe, color: COLORS.ink } }, "Annuler"))), /* @__PURE__ */ React.createElement(BlocageVacancesCard, { config, updateConfig, vacances: vacancesScolaires, ajouterVacances, modifierVacances, supprimerVacances, periodesBloquees, appliquerBlocage, today }), /* @__PURE__ */ React.createElement(ImportCalendrierCard, { joursPris, periodesBloquees, vacances: vacancesScolaires, config, acquisAnnee, importerCalendrier }), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between mb-3" }, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium" }, "🌴 Historique CP"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, joursPris.filter(function(j) {
     return j.type === "CP";
   }).length, " entrée(s)")), /* @__PURE__ */ React.createElement("div", { className: "space-y-1" }, joursPris.filter(function(j) {
     return j.type === "CP";
   }).length === 0 && /* @__PURE__ */ React.createElement("p", { className: "text-sm text-stone-400" }, "Aucun CP saisi."), joursPris.filter(function(j) {
     return j.type === "CP";
   }).map(function(j, i) {
-    return /* @__PURE__ */ React.createElement(Row, { key: j.id, index: i }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "font-mono" }, formatDateFR(j.date), Number(j.duree) === 0.5 ? " (1/2 j)" : ""), j.note && /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, j.note)), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ React.createElement("button", { onClick: () => commencerEditionJour(j) }, /* @__PURE__ */ React.createElement(EditIcon, { size: 15, color: COLORS.accent })), /* @__PURE__ */ React.createElement("button", { onClick: () => supprimerJour(j.id) }, /* @__PURE__ */ React.createElement(TrashIcon, { color: COLORS.loss }))));
+    return /* @__PURE__ */ React.createElement(Row, { key: j.id, index: i }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "font-mono" }, formatDateFR(j.date), Number(j.duree) === 0.5 ? " (1/2 j)" : "", j.force ? " 🔓" : ""), j.note && /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, j.note)), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ React.createElement("button", { onClick: () => commencerEditionJour(j) }, /* @__PURE__ */ React.createElement(EditIcon, { size: 15, color: COLORS.accent })), /* @__PURE__ */ React.createElement("button", { onClick: () => supprimerJour(j.id) }, /* @__PURE__ */ React.createElement(TrashIcon, { color: COLORS.loss }))));
   }))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between mb-3" }, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium" }, "📆 Historique RTT"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, joursPris.filter(function(j) {
     return j.type === "RTT";
   }).length, " entrée(s)")), /* @__PURE__ */ React.createElement("div", { className: "space-y-1" }, joursPris.filter(function(j) {
@@ -2060,7 +2527,7 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifie
   }).length === 0 && /* @__PURE__ */ React.createElement("p", { className: "text-sm text-stone-400" }, "Aucun RTT saisi."), joursPris.filter(function(j) {
     return j.type === "RTT";
   }).map(function(j, i) {
-    return /* @__PURE__ */ React.createElement(Row, { key: j.id, index: i }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "font-mono" }, formatDateFR(j.date), Number(j.duree) === 0.5 ? " (1/2 j)" : ""), j.note && /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, j.note)), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ React.createElement("button", { onClick: () => commencerEditionJour(j) }, /* @__PURE__ */ React.createElement(EditIcon, { size: 15, color: COLORS.accent })), /* @__PURE__ */ React.createElement("button", { onClick: () => supprimerJour(j.id) }, /* @__PURE__ */ React.createElement(TrashIcon, { color: COLORS.loss }))));
+    return /* @__PURE__ */ React.createElement(Row, { key: j.id, index: i }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "font-mono" }, formatDateFR(j.date), Number(j.duree) === 0.5 ? " (1/2 j)" : "", j.force ? " 🔓" : ""), j.note && /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, j.note)), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ React.createElement("button", { onClick: () => commencerEditionJour(j) }, /* @__PURE__ */ React.createElement(EditIcon, { size: 15, color: COLORS.accent })), /* @__PURE__ */ React.createElement("button", { onClick: () => supprimerJour(j.id) }, /* @__PURE__ */ React.createElement(TrashIcon, { color: COLORS.loss }))));
   }))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between mb-3" }, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium" }, "🌉 Historique Pont offert"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, joursPris.filter(function(j) {
     return j.type === "PontOffert";
   }).length, " entrée(s)")), /* @__PURE__ */ React.createElement("div", { className: "space-y-1" }, joursPris.filter(function(j) {
@@ -2068,7 +2535,7 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifie
   }).length === 0 && /* @__PURE__ */ React.createElement("p", { className: "text-sm text-stone-400" }, "Aucun pont offert saisi."), joursPris.filter(function(j) {
     return j.type === "PontOffert";
   }).map(function(j, i) {
-    return /* @__PURE__ */ React.createElement(Row, { key: j.id, index: i }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "font-mono" }, formatDateFR(j.date), Number(j.duree) === 0.5 ? " (1/2 j)" : ""), j.note && /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, j.note)), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ React.createElement("button", { onClick: () => commencerEditionJour(j) }, /* @__PURE__ */ React.createElement(EditIcon, { size: 15, color: COLORS.accent })), /* @__PURE__ */ React.createElement("button", { onClick: () => supprimerJour(j.id) }, /* @__PURE__ */ React.createElement(TrashIcon, { color: COLORS.loss }))));
+    return /* @__PURE__ */ React.createElement(Row, { key: j.id, index: i }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "font-mono" }, formatDateFR(j.date), Number(j.duree) === 0.5 ? " (1/2 j)" : "", j.force ? " 🔓" : ""), j.note && /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, j.note)), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ React.createElement("button", { onClick: () => commencerEditionJour(j) }, /* @__PURE__ */ React.createElement(EditIcon, { size: 15, color: COLORS.accent })), /* @__PURE__ */ React.createElement("button", { onClick: () => supprimerJour(j.id) }, /* @__PURE__ */ React.createElement(TrashIcon, { color: COLORS.loss }))));
   }))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between mb-3" }, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium" }, "🎓 Historique Formation"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, joursPris.filter(function(j) {
     return j.type === "Formation";
   }).length, " entrée(s)")), /* @__PURE__ */ React.createElement("div", { className: "space-y-1" }, joursPris.filter(function(j) {
@@ -2076,7 +2543,7 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifie
   }).length === 0 && /* @__PURE__ */ React.createElement("p", { className: "text-sm text-stone-400" }, "Aucune formation saisie."), joursPris.filter(function(j) {
     return j.type === "Formation";
   }).map(function(j, i) {
-    return /* @__PURE__ */ React.createElement(Row, { key: j.id, index: i }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "font-mono" }, formatDateFR(j.date), Number(j.duree) === 0.5 ? " (1/2 j)" : ""), j.note && /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, j.note)), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ React.createElement("button", { onClick: () => commencerEditionJour(j) }, /* @__PURE__ */ React.createElement(EditIcon, { size: 15, color: COLORS.accent })), /* @__PURE__ */ React.createElement("button", { onClick: () => supprimerJour(j.id) }, /* @__PURE__ */ React.createElement(TrashIcon, { color: COLORS.loss }))));
+    return /* @__PURE__ */ React.createElement(Row, { key: j.id, index: i }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "font-mono" }, formatDateFR(j.date), Number(j.duree) === 0.5 ? " (1/2 j)" : "", j.force ? " 🔓" : ""), j.note && /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, j.note)), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ React.createElement("button", { onClick: () => commencerEditionJour(j) }, /* @__PURE__ */ React.createElement(EditIcon, { size: 15, color: COLORS.accent })), /* @__PURE__ */ React.createElement("button", { onClick: () => supprimerJour(j.id) }, /* @__PURE__ */ React.createElement(TrashIcon, { color: COLORS.loss }))));
   }))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between mb-3" }, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium" }, editingJourId ? "Modifier une entrée" : "Poser une absence"), /* @__PURE__ */ React.createElement("div", { className: "flex gap-2" }, /* @__PURE__ */ React.createElement("button", { onClick: () => exporterICS(joursPris), disabled: joursPris.length === 0, className: "text-xs flex items-center gap-1 rounded-full px-3 py-1.5 disabled:opacity-40", style: { backgroundColor: COLORS.stripe } }, /* @__PURE__ */ React.createElement(DownloadIcon, { size: 13 }), " .ics"), /* @__PURE__ */ React.createElement("button", { onClick: () => exporterExcelRTTCP(joursPris), disabled: joursPris.length === 0, className: "text-xs flex items-center gap-1 rounded-full px-3 py-1.5 disabled:opacity-40 text-white", style: { backgroundColor: COLORS.accent } }, /* @__PURE__ */ React.createElement(DownloadIcon, { size: 13 }), " Excel"))), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-500 mb-1" }, "Type d'absence"), /* @__PURE__ */ React.createElement("div", { className: "grid grid-cols-2 gap-2 mb-3" }, /* @__PURE__ */ React.createElement(
     "button",
     {
@@ -2142,7 +2609,7 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifie
     "📆 Période"
   ))), /* @__PURE__ */ React.createElement("form", { onSubmit: submit, className: "grid grid-cols-2 gap-2" }, editingJourId && /* @__PURE__ */ React.createElement("label", { className: "block col-span-2" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs text-stone-500" }, "Date"), /* @__PURE__ */ React.createElement("input", { type: "date", value: form.date, onChange: (e) => setForm({ ...form, date: e.target.value }), className: "w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" })), !editingJourId && modeSelection === "jours" && /* @__PURE__ */ React.createElement("div", { className: "col-span-2" }, /* @__PURE__ */ React.createElement("div", { className: "flex gap-2 mb-2" }, /* @__PURE__ */ React.createElement("input", { type: "date", value: dateAAjouter, onChange: (e) => setDateAAjouter(e.target.value), className: "flex-1 border border-stone-300 rounded-lg px-3 py-2 text-sm" }), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: ajouterDateChoisie, className: "px-4 rounded-lg text-sm text-white", style: { backgroundColor: COLORS.ink } }, "+")), joursChoisis.length > 0 && /* @__PURE__ */ React.createElement("div", { className: "flex flex-wrap gap-1.5 mb-1" }, joursChoisis.map(function(d) {
     return /* @__PURE__ */ React.createElement("span", { key: d, className: "text-xs font-mono rounded-full px-2 py-1 flex items-center gap-1", style: { backgroundColor: COLORS.stripe } }, formatDateFR(d), /* @__PURE__ */ React.createElement("button", { type: "button", onClick: () => retirerDateChoisie(d), style: { color: COLORS.loss } }, "×"));
-  }))), !editingJourId && modeSelection === "semaine" && /* @__PURE__ */ React.createElement("label", { className: "block col-span-2" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs text-stone-500" }, "N'importe quel jour de la semaine visée"), /* @__PURE__ */ React.createElement("input", { type: "date", value: form.date, onChange: (e) => setForm({ ...form, date: e.target.value }), className: "w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" })), !editingJourId && modeSelection === "periode" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("label", { className: "block" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs text-stone-500" }, "Du"), /* @__PURE__ */ React.createElement("input", { type: "date", value: form.date, onChange: (e) => setForm({ ...form, date: e.target.value }), className: "w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" })), /* @__PURE__ */ React.createElement("label", { className: "block" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs text-stone-500" }, "Au"), /* @__PURE__ */ React.createElement("input", { type: "date", value: form.dateFin, onChange: (e) => setForm({ ...form, dateFin: e.target.value }), className: "w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" }))), /* @__PURE__ */ React.createElement("select", { value: form.duree, onChange: (e) => setForm({ ...form, duree: e.target.value }), className: "border border-stone-300 rounded-lg px-3 py-2 text-sm" }, /* @__PURE__ */ React.createElement("option", { value: "1" }, "Journée entière"), /* @__PURE__ */ React.createElement("option", { value: "0.5" }, "Demi-journée")), /* @__PURE__ */ React.createElement("input", { type: "text", placeholder: "Note (optionnel)", value: form.note, onChange: (e) => setForm({ ...form, note: e.target.value }), className: "border border-stone-300 rounded-lg px-3 py-2 text-sm" }), joursPlage.length > 0 && /* @__PURE__ */ React.createElement("div", { className: "col-span-2 rounded-lg p-3 text-xs", style: { backgroundColor: COLORS.stripe } }, /* @__PURE__ */ React.createElement("p", null, joursPlage.length, " jour(s) × ", form.duree === "0.5" ? "1/2" : "1", " = ", /* @__PURE__ */ React.createElement("span", { className: "font-mono font-semibold" }, formatJours(dureeTotale), " j"), " déduit(s)"), soldeConcerne && /* @__PURE__ */ React.createElement("p", { className: "mt-1" }, "Nouveau solde ", form.type, " : ", /* @__PURE__ */ React.createElement("span", { className: "font-mono font-semibold", style: { color: soldeNegatif ? COLORS.loss : COLORS.gain } }, formatJours(soldeApres), " j")), /* @__PURE__ */ React.createElement("p", { className: "mt-1 text-stone-500" }, "Impact TR estimé : −", joursPlage.length, " jour(s) travaillé(s) sur le(s) mois concerné(s)")), blackoutsPlage.length > 0 && /* @__PURE__ */ React.createElement(Warning, null, blackoutsPlage.length > 1 ? blackoutsPlage.length + " jours tombent" : "Cette date tombe", " dans une période bloquée", blackoutsPlage[0].label ? " : " + blackoutsPlage[0].label : ""), tropConsecutifs && /* @__PURE__ */ React.createElement(Warning, null, "Dépasse ", maxRtt, " RTT consécutifs"), chevauchements.length > 0 && /* @__PURE__ */ React.createElement(Warning, null, "Chevauchement — bloqué. ", chevauchements.map(function(d) {
+  }))), !editingJourId && modeSelection === "semaine" && /* @__PURE__ */ React.createElement("label", { className: "block col-span-2" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs text-stone-500" }, "N'importe quel jour de la semaine visée"), /* @__PURE__ */ React.createElement("input", { type: "date", value: form.date, onChange: (e) => setForm({ ...form, date: e.target.value }), className: "w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" })), !editingJourId && modeSelection === "periode" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("label", { className: "block" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs text-stone-500" }, "Du"), /* @__PURE__ */ React.createElement("input", { type: "date", value: form.date, onChange: (e) => setForm({ ...form, date: e.target.value }), className: "w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" })), /* @__PURE__ */ React.createElement("label", { className: "block" }, /* @__PURE__ */ React.createElement("span", { className: "text-xs text-stone-500" }, "Au"), /* @__PURE__ */ React.createElement("input", { type: "date", value: form.dateFin, onChange: (e) => setForm({ ...form, dateFin: e.target.value }), className: "w-full border border-stone-300 rounded-lg px-3 py-2 text-sm mt-1" }))), /* @__PURE__ */ React.createElement("select", { value: form.duree, onChange: (e) => setForm({ ...form, duree: e.target.value }), className: "border border-stone-300 rounded-lg px-3 py-2 text-sm" }, /* @__PURE__ */ React.createElement("option", { value: "1" }, "Journée entière"), /* @__PURE__ */ React.createElement("option", { value: "0.5" }, "Demi-journée")), /* @__PURE__ */ React.createElement("input", { type: "text", placeholder: "Note (optionnel)", value: form.note, onChange: (e) => setForm({ ...form, note: e.target.value }), className: "border border-stone-300 rounded-lg px-3 py-2 text-sm" }), joursPlage.length > 0 && /* @__PURE__ */ React.createElement("div", { className: "col-span-2 rounded-lg p-3 text-xs", style: { backgroundColor: COLORS.stripe } }, /* @__PURE__ */ React.createElement("p", null, joursPlage.length, " jour(s) × ", form.duree === "0.5" ? "1/2" : "1", " = ", /* @__PURE__ */ React.createElement("span", { className: "font-mono font-semibold" }, formatJours(dureeTotale), " j"), " déduit(s)"), soldeConcerne && /* @__PURE__ */ React.createElement("p", { className: "mt-1" }, "Nouveau solde ", form.type, " : ", /* @__PURE__ */ React.createElement("span", { className: "font-mono font-semibold", style: { color: soldeNegatif ? COLORS.loss : COLORS.gain } }, formatJours(soldeApres), " j")), /* @__PURE__ */ React.createElement("p", { className: "mt-1 text-stone-500" }, "Impact TR estimé : −", joursPlage.length, " jour(s) travaillé(s) sur le(s) mois concerné(s)")), blackoutsPlage.length > 0 && /* @__PURE__ */ React.createElement(Warning, null, blackoutsPlage.length > 1 ? blackoutsPlage.length + " jours tombent" : "Cette date tombe", " dans une période bloquée", blackoutsPlage[0].label ? " : " + blackoutsPlage[0].label : "", !editingJourId ? " — bloqué" : ""), blackoutsPlage.length > 0 && !editingJourId && /* @__PURE__ */ React.createElement("label", { className: "col-span-2 flex items-center gap-2 text-xs" }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: forcerBlocage, onChange: (e) => setForcerBlocage(e.target.checked) }), "Forcer la pose malgré le blocage"), tropConsecutifs && /* @__PURE__ */ React.createElement(Warning, null, "Dépasse ", maxRtt, " RTT consécutifs"), chevauchements.length > 0 && /* @__PURE__ */ React.createElement(Warning, null, "Chevauchement — bloqué. ", chevauchements.map(function(d) {
     const existant = joursPris.filter(function(j) {
       return j.date === d && (!editingJourId || j.id !== editingJourId);
     })[0];
@@ -2150,7 +2617,7 @@ function CongesTab({ config, updateConfig, joursPris, ajouterJoursPlage, modifie
   }).join(", "), ". Modifie ou supprime cette entrée dans l'historique ci-dessus si besoin."), soldeNegatif && /* @__PURE__ */ React.createElement(Warning, null, "Solde ", form.type, " insuffisant (", formatJours(soldeActuelType), " j disponibles) — bloqué"), /* @__PURE__ */ React.createElement("div", { className: "col-span-2 flex gap-2" }, /* @__PURE__ */ React.createElement("button", { type: "submit", disabled: blocageSubmit || !editingJourId && joursPlage.length === 0, className: "flex-1 text-white rounded-lg py-2 text-sm font-medium disabled:opacity-40", style: { backgroundColor: COLORS.ink } }, editingJourId ? "Enregistrer" : "Ajouter"), editingJourId && /* @__PURE__ */ React.createElement("button", { type: "button", onClick: annulerEditionJour, className: "px-4 rounded-lg text-sm", style: { backgroundColor: COLORS.stripe, color: COLORS.ink } }, "Annuler")))), /* @__PURE__ */ React.createElement(Card, null, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between mb-3" }, /* @__PURE__ */ React.createElement("p", { className: "text-sm font-medium" }, "🗄️ Archives"), /* @__PURE__ */ React.createElement(BoutonArchiveAnnee, { annee: anneeArchive, setAnnee: setAnneeArchive, existe: !!archiveExistante, onArchive: () => ajouterArchiveConges(anneeArchive) })), /* @__PURE__ */ React.createElement("div", { className: "space-y-1" }, archivesConges.length === 0 && /* @__PURE__ */ React.createElement("p", { className: "text-sm text-stone-400" }, "Aucune année archivée."), archivesConges.map(function(a, i) {
     const ouvert = archiveOuverte === a.id;
     return /* @__PURE__ */ React.createElement("div", { key: a.id, className: "rounded-lg overflow-hidden", style: { backgroundColor: i % 2 === 1 ? COLORS.stripe : "transparent" } }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center justify-between px-2 py-1.5 cursor-pointer", onClick: () => setArchiveOuverte(ouvert ? null : a.id) }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("p", { className: "font-mono" }, a.annee, " — RTT ", formatJours(a.rttPris), "j · CP ", formatJours(a.cpPris), "j pris"), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400" }, "Archivée le ", formatDateFR(a.dateArchivage))), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2", onClick: (ev) => ev.stopPropagation() }, /* @__PURE__ */ React.createElement("button", { onClick: () => supprimerArchiveConges(a.id) }, /* @__PURE__ */ React.createElement(TrashIcon, { color: COLORS.loss })), /* @__PURE__ */ React.createElement("span", { className: "text-xs text-stone-400" }, ouvert ? "▲" : "▼"))), ouvert && /* @__PURE__ */ React.createElement("div", { className: "px-2 pb-2" }, /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-500" }, "Solde RTT au moment de l'archivage : ", /* @__PURE__ */ React.createElement("span", { className: "font-mono" }, formatJours(a.soldeRTT), " j"), " · Solde CP : ", /* @__PURE__ */ React.createElement("span", { className: "font-mono" }, formatJours(a.soldeCP), " j")), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mt-1" }, (a.joursPris || []).length, " entrée(s) d'absence archivée(s) pour ", a.annee, ".")));
-  })), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mt-3" }, "Archiver conserve un instantané des RTT/CP pris et des soldes pour ", anneeArchive, ", même si tu ajoutes ou modifies des absences plus tard.")), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 px-1" }, "RTT et CP calculés sur l'année civile (1er janvier → 31 décembre). Suivi en temps réel, contrairement au bulletin officiel qui a un mois de décalage."));
+  })), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 mt-3" }, "Archiver conserve un instantané des RTT/CP pris et des soldes pour ", anneeArchive, ", même si tu ajoutes ou modifies des absences plus tard.")), /* @__PURE__ */ React.createElement("p", { className: "text-xs text-stone-400 px-1" }, "RTT calculés sur l'année civile ; CP sur le cycle « Début cycle CP » (01-01 = année civile). Suivi en temps réel, contrairement au bulletin officiel qui a un mois de décalage."));
 }
 class ErrorBoundary extends React.Component {
   constructor(props) {
